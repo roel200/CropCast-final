@@ -2,7 +2,7 @@
 //
 // Reads the CropCast sensor set and writes to the Firebase Realtime Database
 // paths consumed by the Android dashboard. See README.md for wiring, the serial
-// console reference, and the probe calibration procedure.
+// console reference, and the SD card log format.
 //
 // Data contract (do not change without changing the Android app AND
 // firebase/database.rules.json): every reading record carries exactly these
@@ -25,9 +25,10 @@
 #include <time.h>
 #include <WiFi.h>
 #include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
 #include <DHT.h>
 #include <BH1750.h>
-#include <ModbusMaster.h>
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include "secrets.h"
@@ -49,17 +50,16 @@
 #ifndef CROPCAST_SENSOR_DHT_ENABLED
 #define CROPCAST_SENSOR_DHT_ENABLED true
 #endif
-#ifndef CROPCAST_SENSOR_MOISTURE_ENABLED
-#define CROPCAST_SENSOR_MOISTURE_ENABLED true
-#endif
-#ifndef CROPCAST_SENSOR_PH_ENABLED
-#define CROPCAST_SENSOR_PH_ENABLED true
-#endif
-#ifndef CROPCAST_SENSOR_NPK_ENABLED
-#define CROPCAST_SENSOR_NPK_ENABLED true
+// The SN-3002 7-in-1 probe supplies soilMoisture, soilPh, nitrogen, phosphorus
+// and potassium in one Modbus read.
+#ifndef CROPCAST_SENSOR_SOIL_ENABLED
+#define CROPCAST_SENSOR_SOIL_ENABLED true
 #endif
 #ifndef CROPCAST_SENSOR_LIGHT_ENABLED
 #define CROPCAST_SENSOR_LIGHT_ENABLED true
+#endif
+#ifndef CROPCAST_SD_ENABLED
+#define CROPCAST_SD_ENABLED true
 #endif
 
 // When false, readings/current is withheld entirely while any scored sensor is
@@ -73,35 +73,17 @@
 // ---------------------------------------------------------------------------
 constexpr uint8_t DHT_PIN = 4;
 constexpr uint8_t DHT_TYPE = DHT11;
-constexpr uint8_t PH_PIN = 34;
-constexpr uint8_t MOISTURE_PIN = 35;
+// Auto-direction TTL485 module: TXD -> GPIO16 (RX2), RXD -> GPIO17 (TX2).
+// No DE/RE pin is needed.
 constexpr uint8_t RS485_RX = 16;
 constexpr uint8_t RS485_TX = 17;
-constexpr uint8_t RS485_DE_RE = 5;
-constexpr uint8_t NPK_SLAVE_ID = 1;
-constexpr uint16_t NPK_BASE_REGISTER = 0x001E;
-
-// ---------------------------------------------------------------------------
-// D. Calibrate these four values using your actual soil probes.
-//    Run the serial `cal` command, then paste its output into secrets.h.
-// ---------------------------------------------------------------------------
-#ifndef CROPCAST_MOISTURE_DRY_RAW
-#define CROPCAST_MOISTURE_DRY_RAW 3200
-#endif
-#ifndef CROPCAST_MOISTURE_WET_RAW
-#define CROPCAST_MOISTURE_WET_RAW 1250
-#endif
-#ifndef CROPCAST_PH_SLOPE
-#define CROPCAST_PH_SLOPE -5.70f
-#endif
-#ifndef CROPCAST_PH_OFFSET
-#define CROPCAST_PH_OFFSET 21.34f
-#endif
-
-constexpr int MOISTURE_DRY_RAW = CROPCAST_MOISTURE_DRY_RAW;
-constexpr int MOISTURE_WET_RAW = CROPCAST_MOISTURE_WET_RAW;
-constexpr float PH_SLOPE = CROPCAST_PH_SLOPE;
-constexpr float PH_OFFSET = CROPCAST_PH_OFFSET;
+constexpr unsigned long SOIL_BAUD = 4800;
+constexpr uint8_t SOIL_SLAVE_ID = 0x01;
+// Registers 0x0000..0x0008: moisture, temperature, EC, pH, N, P, K, salinity, TDS.
+constexpr uint8_t SOIL_REGISTER_COUNT = 9;
+constexpr uint8_t SD_CARD_CS = 5;  // SCK 18, MISO 19, MOSI 23 (default VSPI)
+// SD file names and rows use Philippine time; Firebase stays UTC.
+constexpr long SD_UTC_OFFSET_SECONDS = 8L * 3600L;
 
 // ---------------------------------------------------------------------------
 // E. Timing
@@ -117,9 +99,10 @@ constexpr unsigned long SENSOR_STALE_AFTER_MS = 5UL * 60UL * 1000UL;
 constexpr unsigned long HISTORY_LOG_INTERVAL_MS = 60UL * 1000UL;
 constexpr unsigned long NTP_WARN_INTERVAL_MS = 60UL * 1000UL;
 constexpr unsigned long DHT_MIN_INTERVAL_MS = 2UL * 1000UL;
-constexpr unsigned long CAL_STREAM_INTERVAL_MS = 500UL;
+constexpr unsigned long SOIL_MAX_WAIT_MS = 500UL;
+constexpr unsigned long SOIL_BYTE_GAP_MS = 30UL;
 constexpr time_t MIN_VALID_EPOCH_SECONDS = 1700000000;
-constexpr char FIRMWARE_VERSION[] = "2.0.0";
+constexpr char FIRMWARE_VERSION[] = "2.1.0";
 
 // ---------------------------------------------------------------------------
 // F. Plausibility limits. These mirror firebase/database.rules.json exactly.
@@ -137,11 +120,6 @@ constexpr float LIMIT_PH_MIN = 0.0f;
 constexpr float LIMIT_PH_MAX = 14.0f;
 // nitrogen, phosphorus, potassium and lightIntensity only need to be >= 0.
 
-// Advisory only: a floating ADC pin usually pins to a rail or drifts wildly.
-constexpr int ANALOG_FLOOR_RAW = 30;
-constexpr int ANALOG_CEILING_RAW = 4065;
-constexpr float ANALOG_NOISE_SD = 400.0f;
-
 // ---------------------------------------------------------------------------
 // G. Types
 // ---------------------------------------------------------------------------
@@ -157,22 +135,18 @@ constexpr char TAG_WIFI[] = "WIFI";
 constexpr char TAG_NTP[] = "NTP";
 constexpr char TAG_FB[] = "FB";
 constexpr char TAG_DHT[] = "DHT";
-constexpr char TAG_MOIST[] = "MOIST";
-constexpr char TAG_PH[] = "PH";
-constexpr char TAG_NPK[] = "NPK";
+constexpr char TAG_SOIL[] = "SOIL";
 constexpr char TAG_LUX[] = "LUX";
+constexpr char TAG_SD[] = "SD";
 constexpr char TAG_PUB[] = "PUB";
 constexpr char TAG_HIST[] = "HIST";
 constexpr char TAG_CMD[] = "CMD";
-constexpr char TAG_CAL[] = "CAL";
 constexpr char TAG_CLI[] = "CLI";
 constexpr char TAG_HEALTH[] = "HEALTH";
 
 enum SensorId : uint8_t {
   SENSOR_DHT = 0,
-  SENSOR_MOISTURE,
-  SENSOR_PH,
-  SENSOR_NPK,
+  SENSOR_SOIL,
   SENSOR_LIGHT,
   SENSOR_COUNT
 };
@@ -221,19 +195,24 @@ struct SensorData {
   float lightIntensity = 0.0f;
   uint64_t timestamp = 0;
   uint16_t trusted = 0;  // bitwise OR of FieldBit
+  // Probe extras: logged to SD only, never sent to Firebase (see fillReadingJson).
+  float soilTemperature = NAN;
+  uint16_t ec = 0;
+  uint16_t salinity = 0;
+  uint16_t tds = 0;
 };
 
-struct AnalogStats {
-  int mean;
-  int minimum;
-  int maximum;
-  float stdDev;
-};
-
-struct CalPoint {
+// Decoded registers 0x0000..0x0008 of the 7-in-1 probe.
+struct SoilProbeValues {
+  float moisture;
+  float temperature;
+  uint16_t ec;
   float ph;
-  float volts;
-  float stdDev;
+  uint16_t nitrogen;
+  uint16_t phosphorus;
+  uint16_t potassium;
+  uint16_t salinity;
+  uint16_t tds;
 };
 
 struct ConsoleCommand {
@@ -248,7 +227,7 @@ struct ConsoleCommand {
 // ---------------------------------------------------------------------------
 DHT dht(DHT_PIN, DHT_TYPE);
 BH1750 lightMeter;
-ModbusMaster npk;
+HardwareSerial rs485(2);
 FirebaseData firebaseData;
 FirebaseAuth auth;
 FirebaseConfig firebaseConfig;
@@ -262,7 +241,6 @@ unsigned long lastWiFiAttempt = 0;
 unsigned long lastHeartbeat = 0;
 unsigned long lastHistorySkipLog = 0;
 unsigned long lastNtpWarn = 0;
-unsigned long lastCalStream = 0;
 
 // Bug 3: history is keyed by the UTC hour actually published, not by uptime,
 // so rebooting inside one hour cannot append extra samples to the month.
@@ -273,18 +251,17 @@ const char *historyState = "withheld";
 bool historyEnabled = true;
 bool historyLocalOverride = false;  // set by the console `history` command
 bool lightSensorReady = false;
+bool sdReady = false;
 bool firebaseStarted = false;
 bool firebaseConfigurationErrorLogged = false;
 bool firebaseAnnounced = false;
 bool timeAnnounced = false;
 uint8_t runtimeLogLevel = CROPCAST_LOG_LEVEL;
 
-// Bug 4: these start untrusted. channels[SENSOR_NPK].hasValue stays false until
-// a real Modbus read succeeds, so N/P/K can never publish as a meaningful 0.
-uint16_t lastNitrogen = 0;
-uint16_t lastPhosphorus = 0;
-uint16_t lastPotassium = 0;
-uint8_t lastModbusResult = 0;
+// Bug 4: this starts untrusted. channels[SENSOR_SOIL].hasValue stays false until
+// a real Modbus read succeeds, so the probe can never publish a meaningful 0.
+SoilProbeValues lastSoil = {};
+const char *lastSoilError = "not read yet";
 
 float cachedTemperature = NAN;
 float cachedHumidity = NAN;
@@ -294,18 +271,8 @@ SensorData lastPublished;
 
 SensorChannel channels[SENSOR_COUNT] = {
     {"DHT11", CROPCAST_SENSOR_DHT_ENABLED, false, false, 0, 0, 0, 0, "not read yet"},
-    {"MOISTURE", CROPCAST_SENSOR_MOISTURE_ENABLED, false, false, 0, 0, 0, 0, "not read yet"},
-    {"PH", CROPCAST_SENSOR_PH_ENABLED, false, false, 0, 0, 0, 0, "not read yet"},
-    {"NPK", CROPCAST_SENSOR_NPK_ENABLED, false, false, 0, 0, 0, 0, "not read yet"},
+    {"SOIL7IN1", CROPCAST_SENSOR_SOIL_ENABLED, false, false, 0, 0, 0, 0, "not read yet"},
     {"BH1750", CROPCAST_SENSOR_LIGHT_ENABLED, false, false, 0, 0, 0, 0, "not read yet"}};
-
-bool calibrationMode = false;
-bool calDryCaptured = false;
-bool calWetCaptured = false;
-AnalogStats calDry = {0, 0, 0, 0.0f};
-AnalogStats calWet = {0, 0, 0, 0.0f};
-uint8_t calPhCount = 0;
-CalPoint calPhPoints[2];
 
 // ---------------------------------------------------------------------------
 // I. Logging
@@ -497,7 +464,10 @@ int findSensorByName(const char *name) {
   }
   // Convenience aliases so the console accepts what people actually type.
   if (strcasecmp(name, "dht") == 0 || strcasecmp(name, "temp") == 0) return SENSOR_DHT;
-  if (strcasecmp(name, "moist") == 0) return SENSOR_MOISTURE;
+  if (strcasecmp(name, "soil") == 0 || strcasecmp(name, "npk") == 0 ||
+      strcasecmp(name, "ph") == 0 || strcasecmp(name, "moist") == 0) {
+    return SENSOR_SOIL;
+  }
   if (strcasecmp(name, "lux") == 0 || strcasecmp(name, "light") == 0) return SENSOR_LIGHT;
   return -1;
 }
@@ -529,96 +499,85 @@ void describeFields(uint16_t mask, char *out, size_t outSize) {
 // ---------------------------------------------------------------------------
 // L. Sensor drivers
 // ---------------------------------------------------------------------------
-void preTransmission() {
-  digitalWrite(RS485_DE_RE, HIGH);
-  delayMicroseconds(50);
+uint16_t modbusCrc(const uint8_t *buffer, size_t length) {
+  uint16_t crc = 0xFFFF;
+  for (size_t index = 0; index < length; index++) {
+    crc ^= buffer[index];
+    for (uint8_t bit = 0; bit < 8; bit++) {
+      crc = (crc & 0x0001) ? (crc >> 1) ^ 0xA001 : crc >> 1;
+    }
+  }
+  return crc;
 }
 
-void postTransmission() {
-  delayMicroseconds(50);
-  digitalWrite(RS485_DE_RE, LOW);
+// One Modbus RTU "read holding registers" request. Returns the number of
+// registers decoded into `out`, or 0 with `error` set. The reply is searched for
+// anywhere in the buffer because some auto-direction modules echo the request
+// or emit a stray byte before the answer.
+uint8_t readSoilRegisters(uint16_t firstRegister, uint8_t count, uint16_t *out, const char **error) {
+  uint8_t request[8] = {SOIL_SLAVE_ID, 0x03,
+                        static_cast<uint8_t>(firstRegister >> 8),
+                        static_cast<uint8_t>(firstRegister & 0xFF),
+                        0x00, count, 0x00, 0x00};
+  const uint16_t requestCrc = modbusCrc(request, 6);
+  request[6] = requestCrc & 0xFF;
+  request[7] = requestCrc >> 8;
+
+  while (rs485.available()) rs485.read();  // flush stale bytes
+  rs485.write(request, sizeof(request));
+
+  uint8_t buffer[64];
+  size_t length = 0;
+  const unsigned long started = millis();
+  unsigned long lastByte = started;
+  while (millis() - started < SOIL_MAX_WAIT_MS) {
+    if (rs485.available()) {
+      const int value = rs485.read();
+      if (length < sizeof(buffer)) buffer[length++] = static_cast<uint8_t>(value);
+      lastByte = millis();
+    } else if (length > 0 && millis() - lastByte > SOIL_BYTE_GAP_MS) {
+      break;
+    }
+  }
+
+  if (length == 0) {
+    *error = "no response";
+    return 0;
+  }
+  const uint8_t dataBytes = count * 2;
+  const size_t responseLength = 5 + dataBytes;
+  for (size_t start = 0; start + responseLength <= length; start++) {
+    const uint8_t *frame = &buffer[start];
+    if (frame[0] != SOIL_SLAVE_ID || frame[1] != 0x03 || frame[2] != dataBytes) continue;
+    const uint16_t received = frame[responseLength - 2] | (frame[responseLength - 1] << 8);
+    if (received != modbusCrc(frame, responseLength - 2)) continue;
+    for (uint8_t index = 0; index < count; index++) {
+      out[index] = (static_cast<uint16_t>(frame[3 + index * 2]) << 8) | frame[4 + index * 2];
+    }
+    *error = "";
+    return count;
+  }
+  *error = "no valid frame (bad CRC or wrong slave id)";
+  return 0;
 }
 
-AnalogStats sampleAnalog(uint8_t pin, uint8_t samples, uint8_t settleMs) {
-  if (samples == 0) samples = 1;
-  uint32_t total = 0;
-  int minimum = 4095;
-  int maximum = 0;
-  int values[32];
-  const uint8_t kept = samples > 32 ? 32 : samples;
-
-  for (uint8_t index = 0; index < samples; index++) {
-    const int raw = analogRead(pin);
-    total += raw;
-    if (raw < minimum) minimum = raw;
-    if (raw > maximum) maximum = raw;
-    if (index < kept) values[index] = raw;
-    if (settleMs > 0) delay(settleMs);
-  }
-
-  AnalogStats stats;
-  stats.mean = static_cast<int>(total / samples);
-  stats.minimum = minimum;
-  stats.maximum = maximum;
-
-  float variance = 0.0f;
-  for (uint8_t index = 0; index < kept; index++) {
-    const float delta = static_cast<float>(values[index] - stats.mean);
-    variance += delta * delta;
-  }
-  stats.stdDev = kept > 1 ? sqrtf(variance / kept) : 0.0f;
-  return stats;
-}
-
-// analogRead() always returns something, so a rail-pinned or wildly noisy pin
-// is the only signal that an analog probe is not really there. A failure here
-// marks that individual READ untrusted; it never flips the channel's `expected`
-// flag, so the channel keeps being polled and recovers on its own once the pin
-// reads sanely again. Whether a channel is wired at all is answered only by
-// CROPCAST_SENSOR_*_ENABLED or the `sensors` console command.
-bool analogLooksConnected(const AnalogStats &stats, const char **reason) {
-  if (stats.mean <= ANALOG_FLOOR_RAW) {
-    *reason = "raw pinned near 0 - pin floating or shorted to GND?";
+bool updateSoilValues() {
+  uint16_t registers[SOIL_REGISTER_COUNT];
+  if (readSoilRegisters(0x0000, SOIL_REGISTER_COUNT, registers, &lastSoilError) == 0) {
+    markSensorFail(SENSOR_SOIL, lastSoilError);
     return false;
   }
-  if (stats.mean >= ANALOG_CEILING_RAW) {
-    *reason = "raw pinned near 4095 - pin floating or shorted to 3.3 V?";
-    return false;
-  }
-  if (stats.stdDev >= ANALOG_NOISE_SD) {
-    *reason = "reading is very noisy - check wiring and ground";
-    return false;
-  }
-  *reason = "";
+  lastSoil.moisture = registers[0] / 10.0f;
+  lastSoil.temperature = static_cast<int16_t>(registers[1]) / 10.0f;
+  lastSoil.ec = registers[2];
+  lastSoil.ph = registers[3] / 10.0f;
+  lastSoil.nitrogen = registers[4];
+  lastSoil.phosphorus = registers[5];
+  lastSoil.potassium = registers[6];
+  lastSoil.salinity = registers[7];
+  lastSoil.tds = registers[8];
+  markSensorGood(SENSOR_SOIL);
   return true;
-}
-
-float moisturePercent(int raw) {
-  const float percent =
-      (MOISTURE_DRY_RAW - raw) * 100.0f / static_cast<float>(MOISTURE_DRY_RAW - MOISTURE_WET_RAW);
-  return constrain(percent, 0.0f, 100.0f);
-}
-
-// Single place where an ADC count becomes a voltage. Changing this to
-// analogReadMilliVolts() would invalidate any previously derived PH_SLOPE and
-// PH_OFFSET, so keep it in one function.
-float phVolts(int raw) { return raw * 3.3f / 4095.0f; }
-
-float phFromVolts(float volts) { return constrain(PH_SLOPE * volts + PH_OFFSET, 0.0f, 14.0f); }
-
-const char *modbusErrorName(uint8_t code) {
-  switch (code) {
-    case ModbusMaster::ku8MBSuccess: return "success";
-    case ModbusMaster::ku8MBIllegalFunction: return "illegal function";
-    case ModbusMaster::ku8MBIllegalDataAddress: return "illegal data address";
-    case ModbusMaster::ku8MBIllegalDataValue: return "illegal data value";
-    case ModbusMaster::ku8MBSlaveDeviceFailure: return "slave device failure";
-    case ModbusMaster::ku8MBInvalidSlaveID: return "invalid slave id";
-    case ModbusMaster::ku8MBInvalidFunction: return "invalid function";
-    case ModbusMaster::ku8MBResponseTimedOut: return "response timed out";
-    case ModbusMaster::ku8MBInvalidCRC: return "invalid CRC";
-    default: return "unknown";
-  }
 }
 
 // DHT11 needs at least 2 s between reads, so a faster caller gets the cache.
@@ -640,21 +599,6 @@ bool readDht(float &temperature, float &humidity) {
   cachedHumidity = readHumidity;
   temperature = readTemperature;
   humidity = readHumidity;
-  return true;
-}
-
-bool updateNpkValues() {
-  npk.clearResponseBuffer();
-  lastModbusResult = npk.readHoldingRegisters(NPK_BASE_REGISTER, 3);
-  if (lastModbusResult != npk.ku8MBSuccess) {
-    markSensorFail(SENSOR_NPK, modbusErrorName(lastModbusResult));
-    return false;
-  }
-
-  lastNitrogen = npk.getResponseBuffer(0);
-  lastPhosphorus = npk.getResponseBuffer(1);
-  lastPotassium = npk.getResponseBuffer(2);
-  markSensorGood(SENSOR_NPK);
   return true;
 }
 
@@ -725,54 +669,34 @@ void buildReading(SensorData &reading) {
     }
   }
 
-  if (channels[SENSOR_MOISTURE].expected) {
-    const AnalogStats stats = sampleAnalog(MOISTURE_PIN, 12, 8);
-    const char *reason = "";
-    if (analogLooksConnected(stats, &reason)) {
-      markSensorGood(SENSOR_MOISTURE);
-    } else {
-      markSensorFail(SENSOR_MOISTURE, reason);
-      LOG_W(TAG_MOIST, "raw %d: %s", stats.mean, reason);
+  if (channels[SENSOR_SOIL].expected) {
+    if (!updateSoilValues()) {
+      LOG_W(TAG_SOIL, "%s, %u consecutive%s", lastSoilError, channels[SENSOR_SOIL].consecutiveFails,
+            channels[SENSOR_SOIL].hasValue ? ", using cached value" : ", no value yet");
     }
-    reading.soilMoisture = moisturePercent(stats.mean);
-    if (isTrusted(SENSOR_MOISTURE) && !calibrationMode && isfinite(reading.soilMoisture) &&
-        reading.soilMoisture >= LIMIT_MOISTURE_MIN && reading.soilMoisture <= LIMIT_MOISTURE_MAX) {
-      reading.trusted |= FIELD_MOISTURE;
-    }
-    LOG_T(TAG_MOIST, "raw %d (sd %.1f) -> %.1f %%", stats.mean, stats.stdDev, reading.soilMoisture);
-  }
-
-  if (channels[SENSOR_PH].expected) {
-    const AnalogStats stats = sampleAnalog(PH_PIN, 12, 8);
-    const char *reason = "";
-    if (analogLooksConnected(stats, &reason)) {
-      markSensorGood(SENSOR_PH);
-    } else {
-      markSensorFail(SENSOR_PH, reason);
-      LOG_W(TAG_PH, "raw %d: %s", stats.mean, reason);
-    }
-    reading.soilPh = phFromVolts(phVolts(stats.mean));
-    if (isTrusted(SENSOR_PH) && !calibrationMode && isfinite(reading.soilPh) &&
-        reading.soilPh >= LIMIT_PH_MIN && reading.soilPh <= LIMIT_PH_MAX) {
-      reading.trusted |= FIELD_PH;
-    }
-    LOG_T(TAG_PH, "raw %d (sd %.1f) -> %.4f V -> pH %.2f", stats.mean, stats.stdDev,
-          phVolts(stats.mean), reading.soilPh);
-  }
-
-  if (channels[SENSOR_NPK].expected) {
-    if (!updateNpkValues()) {
-      LOG_W(TAG_NPK, "modbus 0x%02X (%s), %u consecutive%s", lastModbusResult,
-            modbusErrorName(lastModbusResult), channels[SENSOR_NPK].consecutiveFails,
-            channels[SENSOR_NPK].hasValue ? ", using cached value" : ", no value yet");
-    }
-    // Bug 4: these stay 0 and untrusted until a Modbus read has actually
-    // succeeded, so a missing probe cannot feed zeros into the crop score.
-    if (isTrusted(SENSOR_NPK)) {
-      reading.nitrogen = lastNitrogen;
-      reading.phosphorus = lastPhosphorus;
-      reading.potassium = lastPotassium;
+    // Bug 4: nothing is trusted until a Modbus read has actually succeeded, so a
+    // missing probe cannot feed zeros into the crop score.
+    if (isTrusted(SENSOR_SOIL)) {
+      reading.soilMoisture = lastSoil.moisture;
+      reading.soilPh = lastSoil.ph;
+      reading.nitrogen = lastSoil.nitrogen;
+      reading.phosphorus = lastSoil.phosphorus;
+      reading.potassium = lastSoil.potassium;
+      reading.soilTemperature = lastSoil.temperature;
+      reading.ec = lastSoil.ec;
+      reading.salinity = lastSoil.salinity;
+      reading.tds = lastSoil.tds;
       reading.trusted |= FIELD_NITROGEN | FIELD_PHOSPHORUS | FIELD_POTASSIUM;
+      if (reading.soilMoisture >= LIMIT_MOISTURE_MIN && reading.soilMoisture <= LIMIT_MOISTURE_MAX) {
+        reading.trusted |= FIELD_MOISTURE;
+      } else {
+        LOG_W(TAG_SOIL, "moisture %.1f %% outside 0..100, field withheld", reading.soilMoisture);
+      }
+      if (reading.soilPh >= LIMIT_PH_MIN && reading.soilPh <= LIMIT_PH_MAX) {
+        reading.trusted |= FIELD_PH;
+      } else {
+        LOG_W(TAG_SOIL, "pH %.1f outside 0..14, field withheld", reading.soilPh);
+      }
     }
   }
 
@@ -940,19 +864,93 @@ bool publishStatus(bool online) {
   return true;
 }
 
-void publishSensorCycle() {
+// ---------------------------------------------------------------------------
+// N2. microSD log: /soil_data/YYYY-MM/YYYY-MM-DD.csv in Philippine time.
+//     The first eleven columns match the standalone probe sketch, so older
+//     files and new files can be merged; air temperature and humidity follow.
+// ---------------------------------------------------------------------------
+void logReadingToSd(const SensorData &reading) {
+  if (!CROPCAST_SD_ENABLED || (reading.trusted & FIELD_TIMESTAMP) == 0) return;
+  if (!sdReady) {
+    sdReady = SD.begin(SD_CARD_CS);  // retry in case the card was inserted late
+    if (!sdReady) return;
+  }
+
+  const time_t localSeconds =
+      static_cast<time_t>(reading.timestamp / 1000ULL) + SD_UTC_OFFSET_SECONDS;
+  struct tm local;
+  gmtime_r(&localSeconds, &local);
+  char monthDir[24];
+  char filePath[40];
+  char stamp[24];
+  strftime(monthDir, sizeof(monthDir), "/soil_data/%Y-%m", &local);
+  strftime(filePath, sizeof(filePath), "/soil_data/%Y-%m/%Y-%m-%d.csv", &local);
+  strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &local);
+
+  if (!SD.exists("/soil_data")) SD.mkdir("/soil_data");
+  if (!SD.exists(monthDir)) SD.mkdir(monthDir);
+  File file = SD.open(filePath, FILE_APPEND);
+  if (!file) {
+    sdReady = false;  // card removed or full; retried next cycle
+    LOG_W(TAG_SD, "cannot open %s", filePath);
+    return;
+  }
+  if (file.size() == 0) {
+    file.println("date_time,moisture_pct,temp_c,ec_uscm,ph,nitrogen_mgkg,phosphorus_mgkg,"
+                 "potassium_mgkg,salinity,tds,light_lux,air_temp_c,humidity_pct");
+  }
+
+  // Untrusted fields are written as empty cells, never as 0.
+  const bool soil = (reading.trusted & FIELD_NITROGEN) != 0;
+  const bool moisture = (reading.trusted & FIELD_MOISTURE) != 0;
+  const bool ph = (reading.trusted & FIELD_PH) != 0;
+  file.print(stamp);
+  file.print(',');
+  if (moisture) file.print(reading.soilMoisture, 1);
+  file.print(',');
+  if (soil) file.print(reading.soilTemperature, 1);
+  file.print(',');
+  if (soil) file.print(reading.ec);
+  file.print(',');
+  if (ph) file.print(reading.soilPh, 1);
+  file.print(',');
+  if (soil) file.print(reading.nitrogen);
+  file.print(',');
+  if (soil) file.print(reading.phosphorus);
+  file.print(',');
+  if (soil) file.print(reading.potassium);
+  file.print(',');
+  if (soil) file.print(reading.salinity);
+  file.print(',');
+  if (soil) file.print(reading.tds);
+  file.print(',');
+  if (reading.trusted & FIELD_LIGHT) file.print(reading.lightIntensity, 2);
+  file.print(',');
+  if (reading.trusted & FIELD_TEMPERATURE) file.print(reading.temperature, 1);
+  file.print(',');
+  if (reading.trusted & FIELD_HUMIDITY) file.print(reading.humidity, 1);
+  file.println();
+  file.close();
+}
+
+// Runs whether or not the network is up, so the SD card keeps logging offline.
+void runSensorCycle(bool online) {
   SensorData reading;
   buildReading(reading);
+  logReadingToSd(reading);
 
-  publishCurrentReading(reading);
-  publishMonthlyHistory(reading);
-  // Always last and always unconditional: status must stay fresh even when
-  // every sensor has failed, or the app marks the device offline.
-  publishStatus(true);
+  if (online) {
+    publishCurrentReading(reading);
+    publishMonthlyHistory(reading);
+    // Always last and always unconditional: status must stay fresh even when
+    // every sensor has failed, or the app marks the device offline.
+    publishStatus(true);
+  }
 
-  LOG_D(TAG_PUB, "%.1f C, %.0f %%RH, %.0f %% moisture, pH %.2f, N/P/K %u/%u/%u, %.0f lux",
+  LOG_D(TAG_PUB, "%.1f C, %.0f %%RH, %.0f %% moisture, pH %.2f, N/P/K %u/%u/%u, EC %u, %.0f lux",
         reading.temperature, reading.humidity, reading.soilMoisture, reading.soilPh,
-        reading.nitrogen, reading.phosphorus, reading.potassium, reading.lightIntensity);
+        reading.nitrogen, reading.phosphorus, reading.potassium, reading.ec,
+        reading.lightIntensity);
 }
 
 void refreshRemoteSettings() {
@@ -1002,14 +1000,13 @@ void cmdHealth(const char *args);
 void cmdRead(const char *args);
 void cmdPublish(const char *args);
 void cmdScan(const char *args);
-void cmdNpk(const char *args);
+void cmdSoil(const char *args);
 void cmdTime(const char *args);
 void cmdWifi(const char *args);
 void cmdFirebase(const char *args);
 void cmdSensors(const char *args);
 void cmdLog(const char *args);
 void cmdHistory(const char *args);
-void cmdCal(const char *args);
 void cmdReboot(const char *args);
 
 const ConsoleCommand CONSOLE_COMMANDS[] = {
@@ -1019,14 +1016,13 @@ const ConsoleCommand CONSOLE_COMMANDS[] = {
     {"read", cmdRead, "read", "read every sensor now, raw and converted, no upload"},
     {"publish", cmdPublish, "publish [current|history|status|all]", "force a publish now"},
     {"scan", cmdScan, "scan", "I2C bus scan"},
-    {"npk", cmdNpk, "npk [reg] [count]", "one Modbus read, hex dump and decoded error"},
+    {"soil", cmdSoil, "soil [reg] [count]", "one raw 7-in-1 Modbus read, all registers"},
     {"time", cmdTime, "time [sync]", "clock state; 'sync' re-arms NTP"},
     {"wifi", cmdWifi, "wifi [reconnect|scan]", "network state and nearby SSIDs"},
     {"fb", cmdFirebase, "fb", "Firebase ready state, uid, base path, last error"},
     {"sensors", cmdSensors, "sensors [<name> on|off]", "list or toggle expected channels"},
     {"log", cmdLog, "log [level]", "show or set verbosity (off..trace)"},
     {"history", cmdHistory, "history [on|off]", "local override of cloudHistoryEnabled"},
-    {"cal", cmdCal, "cal", "enter probe calibration mode"},
     {"reboot", cmdReboot, "reboot", "mark offline, then restart"}};
 constexpr size_t CONSOLE_COMMAND_COUNT = sizeof(CONSOLE_COMMANDS) / sizeof(CONSOLE_COMMANDS[0]);
 
@@ -1034,16 +1030,9 @@ constexpr size_t CONSOLE_LINE_MAX = 80;
 char consoleLine[CONSOLE_LINE_MAX];
 size_t consoleLength = 0;
 
-void handleCalibrationCommand(const char *line);
-
 void dispatchConsole(char *line) {
   while (*line == ' ') line++;
   if (*line == '\0') return;
-
-  if (calibrationMode) {
-    handleCalibrationCommand(line);
-    return;
-  }
 
   char *args = strchr(line, ' ');
   if (args != nullptr) {
@@ -1175,19 +1164,13 @@ void cmdRead(const char *args) {
 
   Serial.printf("temperature   : %.1f C\n", reading.temperature);
   Serial.printf("humidity      : %.1f %%\n", reading.humidity);
-  if (channels[SENSOR_MOISTURE].expected) {
-    const AnalogStats stats = sampleAnalog(MOISTURE_PIN, 12, 4);
-    Serial.printf("soilMoisture  : %.1f %%  (raw %d, sd %.1f)\n", moisturePercent(stats.mean),
-                  stats.mean, stats.stdDev);
-  }
-  if (channels[SENSOR_PH].expected) {
-    const AnalogStats stats = sampleAnalog(PH_PIN, 12, 4);
-    Serial.printf("soilPh        : %.2f  (raw %d, %.4f V, sd %.1f)\n",
-                  phFromVolts(phVolts(stats.mean)), stats.mean, phVolts(stats.mean), stats.stdDev);
-  }
-  Serial.printf("N/P/K         : %u / %u / %u  (modbus 0x%02X %s)\n", reading.nitrogen,
-                reading.phosphorus, reading.potassium, lastModbusResult,
-                modbusErrorName(lastModbusResult));
+  Serial.printf("soilMoisture  : %.1f %%\n", reading.soilMoisture);
+  Serial.printf("soilPh        : %.1f\n", reading.soilPh);
+  Serial.printf("N/P/K         : %u / %u / %u mg/kg  (%s)\n", reading.nitrogen,
+                reading.phosphorus, reading.potassium,
+                lastSoilError[0] != '\0' ? lastSoilError : "probe ok");
+  Serial.printf("soil extras   : %.1f C soil, EC %u uS/cm, salinity %u, TDS %u\n",
+                reading.soilTemperature, reading.ec, reading.salinity, reading.tds);
   Serial.printf("lightIntensity: %.0f lux\n", reading.lightIntensity);
   Serial.printf("timestamp     : %llu\n", (unsigned long long)reading.timestamp);
   Serial.printf("trusted       : %s\n", trustedNames);
@@ -1220,30 +1203,31 @@ void cmdScan(const char *args) {
   scanI2CBus();
 }
 
-void cmdNpk(const char *args) {
-  uint16_t reg = NPK_BASE_REGISTER;
-  uint8_t count = 3;
+void cmdSoil(const char *args) {
+  uint16_t reg = 0x0000;
+  uint8_t count = SOIL_REGISTER_COUNT;
   if (*args != '\0') {
     char *end = nullptr;
     const long parsed = strtol(args, &end, 0);
     if (end != args) reg = static_cast<uint16_t>(parsed);
     if (end != nullptr && *end != '\0') {
       const long parsedCount = strtol(end, nullptr, 0);
-      if (parsedCount > 0 && parsedCount <= 8) count = static_cast<uint8_t>(parsedCount);
+      if (parsedCount > 0 && parsedCount <= 16) count = static_cast<uint8_t>(parsedCount);
     }
   }
 
-  Serial.printf("reading %u holding registers from 0x%04X, slave %u\n", count, reg, NPK_SLAVE_ID);
-  npk.clearResponseBuffer();
-  const uint8_t result = npk.readHoldingRegisters(reg, count);
-  Serial.printf("result: 0x%02X (%s)\n", result, modbusErrorName(result));
-  if (result != npk.ku8MBSuccess) {
-    Serial.println("check: RO->GPIO16, DI->GPIO17, DE+RE->GPIO5, common ground, probe power");
+  Serial.printf("reading %u holding registers from 0x%04X, slave %u, %lu baud\n", count, reg,
+                SOIL_SLAVE_ID, SOIL_BAUD);
+  uint16_t values[16];
+  const char *error = "";
+  if (readSoilRegisters(reg, count, values, &error) == 0) {
+    Serial.printf("failed: %s\n", error);
+    Serial.println("check: module TXD->GPIO16, RXD->GPIO17, yellow->A, blue->B, 12 V probe power,");
+    Serial.println("       12 V ground tied to ESP32 GND");
     return;
   }
   for (uint8_t index = 0; index < count; index++) {
-    const uint16_t value = npk.getResponseBuffer(index);
-    Serial.printf("  [0x%04X] 0x%04X  %u\n", reg + index, value, value);
+    Serial.printf("  [0x%04X] 0x%04X  %u\n", reg + index, values[index], values[index]);
   }
 }
 
@@ -1392,168 +1376,6 @@ void cmdHistory(const char *args) {
 void cmdReboot(const char *args) {
   (void)args;
   gracefulRestart("reboot requested from the serial console");
-}
-
-// ---------------------------------------------------------------------------
-// P. Calibration mode
-// ---------------------------------------------------------------------------
-void printCalibrationHelp() {
-  Serial.println("Calibration mode. Moisture and pH are withheld from Firebase while active.");
-  Serial.println("  dry           capture the moisture point in air        (0 %)");
-  Serial.println("  wet           capture the moisture point in water      (100 %)");
-  Serial.println("  ph <value>    capture a pH buffer, e.g. 'ph 4.00' then 'ph 6.86'");
-  Serial.println("  show          solve, validate, print the secrets.h block");
-  Serial.println("  verify        re-measure and report error against the captured points");
-  Serial.println("  reset         discard captured points");
-  Serial.println("  q             leave calibration mode");
-}
-
-void cmdCal(const char *args) {
-  (void)args;
-  calibrationMode = true;
-  lastCalStream = 0;
-  printCalibrationHelp();
-}
-
-void serviceCalibrationStream() {
-  if (!calibrationMode) return;
-  const unsigned long now = millis();
-  if (lastCalStream != 0 && now - lastCalStream < CAL_STREAM_INTERVAL_MS) return;
-  lastCalStream = now;
-
-  const AnalogStats moisture = sampleAnalog(MOISTURE_PIN, 8, 2);
-  const AnalogStats ph = sampleAnalog(PH_PIN, 8, 2);
-  Serial.printf("[CAL] MOIST raw=%d min=%d max=%d sd=%.1f -> %.1f %%  |  "
-                "PH raw=%d v=%.4f sd=%.1f -> pH %.2f\n",
-                moisture.mean, moisture.minimum, moisture.maximum, moisture.stdDev,
-                moisturePercent(moisture.mean), ph.mean, phVolts(ph.mean), ph.stdDev,
-                phFromVolts(phVolts(ph.mean)));
-}
-
-void calibrationShow() {
-  Serial.println("--- copy into secrets.h ---");
-  char stamp[32] = "clock not synced";
-  if (timeSynced()) formatUtc(epochMillis(), "%Y-%m-%dT%H:%M:%SZ", stamp, sizeof(stamp));
-  Serial.printf("// calibrated %s, firmware %s, device %s\n", stamp, FIRMWARE_VERSION, DEVICE_ID);
-
-  if (calDryCaptured && calWetCaptured) {
-    const int span = calDry.mean - calWet.mean;
-    if (span <= 0) {
-      Serial.println("// ERROR: dry must read HIGHER than wet on a capacitive probe.");
-      Serial.println("//        Recapture, or check that this is not a resistive probe.");
-    } else {
-      Serial.printf("#define CROPCAST_MOISTURE_DRY_RAW %d   // air, sd %.1f\n", calDry.mean,
-                    calDry.stdDev);
-      Serial.printf("#define CROPCAST_MOISTURE_WET_RAW %d   // water, sd %.1f, span %d\n",
-                    calWet.mean, calWet.stdDev, span);
-      if (span < 300) Serial.println("// WARNING: span < 300 counts; 1 % is under 3 counts, noise will dominate.");
-      if (calDry.stdDev > 40.0f || calWet.stdDev > 40.0f) {
-        Serial.println("// WARNING: a capture had sd > 40; the reading had not settled.");
-      }
-    }
-  } else {
-    Serial.println("// moisture: capture both 'dry' and 'wet' first");
-  }
-
-  if (calPhCount >= 2) {
-    const CalPoint &a = calPhPoints[0];
-    const CalPoint &b = calPhPoints[1];
-    const float deltaVolts = b.volts - a.volts;
-    if (fabsf(deltaVolts) < 0.10f) {
-      Serial.println("// ERROR: the two buffers differ by < 0.10 V.");
-      Serial.println("//        Electrode not responding, BNC loose, or buffers not settled.");
-    } else {
-      const float slope = (b.ph - a.ph) / deltaVolts;
-      const float offset = a.ph - slope * a.volts;
-      Serial.printf("#define CROPCAST_PH_SLOPE  %.4ff // from pH %.2f @ %.4f V and pH %.2f @ %.4f V\n",
-                    slope, a.ph, a.volts, b.ph, b.volts);
-      Serial.printf("#define CROPCAST_PH_OFFSET %.4ff\n", offset);
-      Serial.printf("// residuals: %.3f pH and %.3f pH\n", slope * a.volts + offset - a.ph,
-                    slope * b.volts + offset - b.ph);
-      if (fabsf(slope) < 2.0f || fabsf(slope) > 10.0f) {
-        Serial.printf("// WARNING: |slope| %.2f pH/V is outside the usual 2..10 range.\n",
-                      fabsf(slope));
-      }
-    }
-  } else {
-    Serial.printf("// pH: %u of 2 buffer points captured\n", calPhCount);
-  }
-  Serial.println("---------------------------");
-}
-
-void calibrationVerify() {
-  if (calPhCount < 2) {
-    Serial.println("capture two pH points first");
-    return;
-  }
-  const AnalogStats stats = sampleAnalog(PH_PIN, 24, 4);
-  const float volts = phVolts(stats.mean);
-  Serial.printf("now reading %.4f V -> pH %.2f with the CURRENTLY COMPILED constants\n", volts,
-                phFromVolts(volts));
-  Serial.println("Flash the values from 'show' before trusting this number.");
-  for (uint8_t index = 0; index < calPhCount; index++) {
-    Serial.printf("  captured point %u: pH %.2f @ %.4f V (sd %.1f)\n", index + 1,
-                  calPhPoints[index].ph, calPhPoints[index].volts, calPhPoints[index].stdDev);
-  }
-}
-
-void handleCalibrationCommand(const char *line) {
-  if (strcasecmp(line, "q") == 0 || strcasecmp(line, "exit") == 0) {
-    calibrationMode = false;
-    Serial.println("left calibration mode; moisture and pH resume publishing");
-    return;
-  }
-  if (strcasecmp(line, "help") == 0 || strcmp(line, "?") == 0) {
-    printCalibrationHelp();
-    return;
-  }
-  if (strcasecmp(line, "dry") == 0) {
-    calDry = sampleAnalog(MOISTURE_PIN, 24, 8);
-    calDryCaptured = true;
-    Serial.printf("captured dry: raw %d (sd %.1f)\n", calDry.mean, calDry.stdDev);
-    return;
-  }
-  if (strcasecmp(line, "wet") == 0) {
-    calWet = sampleAnalog(MOISTURE_PIN, 24, 8);
-    calWetCaptured = true;
-    Serial.printf("captured wet: raw %d (sd %.1f)\n", calWet.mean, calWet.stdDev);
-    return;
-  }
-  if (strncasecmp(line, "ph", 2) == 0 && (line[2] == ' ' || line[2] == '\0')) {
-    const float nominal = atof(line + 2);
-    if (nominal <= 0.0f || nominal > 14.0f) {
-      Serial.println("usage: ph <value>, e.g. 'ph 4.00', 'ph 6.86', 'ph 9.18'");
-      return;
-    }
-    const AnalogStats stats = sampleAnalog(PH_PIN, 24, 8);
-    if (calPhCount >= 2) {
-      calPhPoints[0] = calPhPoints[1];  // keep the two most recent
-      calPhCount = 1;
-    }
-    calPhPoints[calPhCount].ph = nominal;
-    calPhPoints[calPhCount].volts = phVolts(stats.mean);
-    calPhPoints[calPhCount].stdDev = stats.stdDev;
-    calPhCount++;
-    Serial.printf("captured pH %.2f at %.4f V (raw %d, sd %.1f) [%u/2]\n", nominal,
-                  phVolts(stats.mean), stats.mean, stats.stdDev, calPhCount);
-    return;
-  }
-  if (strcasecmp(line, "show") == 0) {
-    calibrationShow();
-    return;
-  }
-  if (strcasecmp(line, "verify") == 0) {
-    calibrationVerify();
-    return;
-  }
-  if (strcasecmp(line, "reset") == 0) {
-    calDryCaptured = false;
-    calWetCaptured = false;
-    calPhCount = 0;
-    Serial.println("captured points discarded");
-    return;
-  }
-  Serial.println("unknown calibration command - type 'help' or 'q' to leave");
 }
 
 // ---------------------------------------------------------------------------
@@ -1711,36 +1533,22 @@ void probeSensorsAtBoot() {
     }
   }
 
-  if (channels[SENSOR_MOISTURE].expected) {
-    const AnalogStats stats = sampleAnalog(MOISTURE_PIN, 16, 4);
-    const char *reason = "";
-    if (analogLooksConnected(stats, &reason)) {
-      markSensorGood(SENSOR_MOISTURE);
-      LOG_I(TAG_MOIST, "detected: raw %d (sd %.1f)", stats.mean, stats.stdDev);
+  if (channels[SENSOR_SOIL].expected) {
+    if (updateSoilValues()) {
+      LOG_I(TAG_SOIL, "detected: %.1f %% moisture, pH %.1f, N %u, P %u, K %u mg/kg",
+            lastSoil.moisture, lastSoil.ph, lastSoil.nitrogen, lastSoil.phosphorus,
+            lastSoil.potassium);
     } else {
-      markSensorFail(SENSOR_MOISTURE, reason);
-      LOG_W(TAG_MOIST, "raw %d: %s", stats.mean, reason);
+      LOG_E(TAG_SOIL, "no response: %s - run 'soil' in the console", lastSoilError);
     }
   }
 
-  if (channels[SENSOR_PH].expected) {
-    const AnalogStats stats = sampleAnalog(PH_PIN, 16, 4);
-    const char *reason = "";
-    if (analogLooksConnected(stats, &reason)) {
-      markSensorGood(SENSOR_PH);
-      LOG_I(TAG_PH, "detected: raw %d (sd %.1f)", stats.mean, stats.stdDev);
+  if (CROPCAST_SD_ENABLED) {
+    sdReady = SD.begin(SD_CARD_CS);
+    if (sdReady) {
+      LOG_I(TAG_SD, "card ready, %llu MB", SD.cardSize() / (1024ULL * 1024ULL));
     } else {
-      markSensorFail(SENSOR_PH, reason);
-      LOG_W(TAG_PH, "raw %d: %s", stats.mean, reason);
-    }
-  }
-
-  if (channels[SENSOR_NPK].expected) {
-    if (updateNpkValues()) {
-      LOG_I(TAG_NPK, "detected: N %u, P %u, K %u", lastNitrogen, lastPhosphorus, lastPotassium);
-    } else {
-      LOG_E(TAG_NPK, "no response: modbus 0x%02X (%s)", lastModbusResult,
-            modbusErrorName(lastModbusResult));
+      LOG_W(TAG_SD, "no card on CS GPIO %u; logging retries every cycle", SD_CARD_CS);
     }
   }
 
@@ -1777,21 +1585,17 @@ void setup() {
 
   basePath = String("/devices/") + DEVICE_ID;
 
-  pinMode(RS485_DE_RE, OUTPUT);
-  digitalWrite(RS485_DE_RE, LOW);
-  analogReadResolution(12);
-  analogSetPinAttenuation(PH_PIN, ADC_11db);
-  analogSetPinAttenuation(MOISTURE_PIN, ADC_11db);
-
   dht.begin();
-  Wire.begin();
+  Wire.begin(21, 22);  // SDA, SCL
+  delay(100);
   scanI2CBus();
-  lightSensorReady = lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
+  // The BH1750 sometimes misses the first begin() right after power-up.
+  for (uint8_t attempt = 0; attempt < 5 && !lightSensorReady; attempt++) {
+    lightSensorReady = lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
+    if (!lightSensorReady) delay(200);
+  }
 
-  Serial2.begin(9600, SERIAL_8N1, RS485_RX, RS485_TX);
-  npk.begin(NPK_SLAVE_ID, Serial2);
-  npk.preTransmission(preTransmission);
-  npk.postTransmission(postTransmission);
+  rs485.begin(SOIL_BAUD, SERIAL_8N1, RS485_RX, RS485_TX);
 
   probeSensorsAtBoot();
 
@@ -1824,7 +1628,6 @@ void setup() {
 void loop() {
   // First, so the console keeps working with Wi-Fi or Firebase down.
   serviceConsole();
-  serviceCalibrationStream();
 
   connectWiFi();
   startFirebaseIfReady();
@@ -1836,7 +1639,14 @@ void loop() {
     logHeartbeat();
   }
 
-  if (WiFi.status() != WL_CONNECTED || !firebaseStarted || !Firebase.ready()) {
+  const bool online = WiFi.status() == WL_CONNECTED && firebaseStarted && Firebase.ready();
+  // Before the online check, so the SD card keeps logging without Wi-Fi.
+  if (lastLivePublish == 0 || now - lastLivePublish >= LIVE_PUBLISH_INTERVAL_MS) {
+    lastLivePublish = now;
+    runSensorCycle(online);
+  }
+
+  if (!online) {
     delay(20);
     return;
   }
@@ -1849,10 +1659,6 @@ void loop() {
   if (lastSettingsCheck == 0 || now - lastSettingsCheck >= SETTINGS_INTERVAL_MS) {
     lastSettingsCheck = now;
     refreshRemoteSettings();
-  }
-  if (lastLivePublish == 0 || now - lastLivePublish >= LIVE_PUBLISH_INTERVAL_MS) {
-    lastLivePublish = now;
-    publishSensorCycle();
   }
   if (lastCommandCheck == 0 || now - lastCommandCheck >= COMMAND_INTERVAL_MS) {
     lastCommandCheck = now;

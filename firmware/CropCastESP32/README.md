@@ -2,21 +2,31 @@
 
 This sketch reads the CropCast sensor set and writes data to the Firebase paths consumed by the Android dashboard.
 
-It is built for staged bring-up: sensors can be wired one at a time, and the firmware refuses to feed values it does not trust into the crop-recommendation pipeline. A serial console (115200 baud) exposes live diagnostics and a guided probe calibration.
+It is built for staged bring-up: sensors can be wired one at a time, and the firmware refuses to feed values it does not trust into the crop-recommendation pipeline. A serial console (115200 baud) exposes live diagnostics, and every reading is also logged to a microSD card, including while Wi-Fi is down.
 
 ## Wiring
 
 | Module | ESP32 connection | Notes |
 |---|---|---|
-| DHT11 | DATA → GPIO 4 | Add a 10 kΩ pull-up from DATA to 3.3 V if your module does not include one. |
-| Capacitive moisture sensor | AO → GPIO 35 | Power from 3.3 V; calibrate the dry and wet raw constants. |
-| Analog pH interface | AO → GPIO 34 | Ensure its output never exceeds 3.3 V. Calibrate with buffer solutions. |
-| BH1750 | SDA → GPIO 21, SCL → GPIO 22 | Default ESP32 I²C pins. |
-| MAX485 / NPK probe | RO → GPIO 16, DI → GPIO 17, DE+RE → GPIO 5 | Use a common ground and the power supply required by the probe. Do not power a 12 V probe from the ESP32. |
+| DHT11 | DATA → GPIO 4 | Air temperature and humidity. Add a 10 kΩ pull-up from DATA to 3.3 V if your module does not include one. |
+| SN-3002 7-in-1 soil probe | brown → 12 V +, black → 12 V −, yellow → 485 A, blue → 485 B | Moisture, soil temperature, EC, pH, N, P, K, salinity, TDS. Do not power the probe from the ESP32. |
+| Auto-direction TTL485 module | TXD → GPIO 16, RXD → GPIO 17, VCC → 3.3 V, GND → GND | No DE/RE pin. Tie the 12 V supply's − to ESP32 GND. |
+| BH1750 | SDA → GPIO 21, SCL → GPIO 22, VCC → 3.3 V | Default ESP32 I²C pins. |
+| microSD module | CS → GPIO 5, SCK → GPIO 18, MOSI → GPIO 23, MISO → GPIO 19, VCC → 5 V | Default VSPI pins. |
 
-GPIO 34 and 35 are ADC1 pins, so they keep working while Wi-Fi is active. GPIO 5 is a strapping pin but is only driven after boot, so no external pull-down is needed.
+The probe answers as Modbus slave `1` at 4800 baud. One request reads holding registers `0x0000`–`0x0008`:
 
-The NPK code expects Modbus slave ID `1`, 9600 baud, and holding registers `0x001E`–`0x0020`. Confirm these values in the sensor manual — the serial `npk` command reads any register you name, which is the quickest way to check.
+| Register | Value | Scale |
+|---|---|---|
+| `0x0000` | moisture | ÷10, % |
+| `0x0001` | soil temperature | signed, ÷10, °C |
+| `0x0002` | EC | µS/cm |
+| `0x0003` | pH | ÷10 |
+| `0x0004`–`0x0006` | N, P, K | mg/kg |
+| `0x0007` | salinity | raw |
+| `0x0008` | TDS | raw |
+
+The app's `temperature` and `humidity` still come from the DHT11 (air). Soil temperature, EC, salinity and TDS go to the SD card only, because the Firebase reading record has a fixed nine-field contract (see below).
 
 ## Arduino libraries
 
@@ -24,7 +34,10 @@ The NPK code expects Modbus slave ID `1`, 9600 baud, and holding registers `0x00
 - DHT sensor library by Adafruit
 - Adafruit Unified Sensor
 - BH1750 by Christopher Laws
-- ModbusMaster by Doc Walker
+
+SPI, SD, Wire and WiFi are part of the ESP32 core. The probe is read with a raw Modbus frame, so no Modbus library is needed.
+
+The sketch uses about 99 % of the default 1.3 MB app partition. Select **Tools → Partition Scheme → Huge APP (3MB No OTA)** before uploading.
 
 ## Setup
 
@@ -48,99 +61,42 @@ The console is serviced before the network check, so it keeps working with Wi-Fi
 | `help`, `?` | List commands |
 | `status` | Uptime, heap, Wi-Fi, clock, Firebase, history state, timers, last published values, health table |
 | `health` | Per-sensor health table |
-| `read` | Read every sensor now — raw counts, converted values, and which fields are trusted. Uploads nothing. |
+| `read` | Read every sensor now, including the probe extras, and show which fields are trusted. Uploads nothing. |
 | `publish [current\|history\|status\|all]` | Force a publish and print the gate decision, including why something was withheld |
 | `scan` | I²C bus scan, annotating BH1750 at `0x23` / `0x5C` |
-| `npk [reg] [count]` | One Modbus transaction with a hex dump and a decoded error name. The fastest way to debug RS485. |
+| `soil [reg] [count]` | One raw Modbus read of the 7-in-1 probe (default: all nine registers from `0x0000`). The fastest way to debug RS485. |
 | `time [sync]` | Clock state and the current hour slot; `time sync` re-arms NTP |
 | `wifi [reconnect\|scan]` | Network state; force a reconnect; list nearby 2.4 GHz SSIDs, channels, and signal strengths |
 | `fb` | Firebase ready state, UID, base path, last error and HTTP code |
-| `sensors` | List channels; `sensors ph off` marks one not wired for this session |
+| `sensors` | List channels; `sensors soil off` marks one not wired for this session |
 | `log [level]` | Show or set verbosity: `off error warn info debug trace` |
 | `history [on\|off]` | Local override of `cloudHistoryEnabled`, so a bench test never lands in the month |
-| `cal` | Enter probe calibration mode |
 | `reboot` | Mark the device offline, then restart |
 
 Log lines are fixed-width and greppable:
 
 ```
 [    12.345] I/PUB   : current uploaded (7/7 scored fields trusted)
-[    12.401] W/NPK   : modbus 0xE2 (response timed out), 3 consecutive, using cached value
+[    12.401] W/SOIL  : no response, 3 consecutive, using cached value
 ```
 
 Passwords and auth tokens are never printed. The API key is shown masked.
 
-## Calibrating the probes
+## microSD log
 
-**Required before field use.** The `MOISTURE_DRY_RAW`, `MOISTURE_WET_RAW`, `PH_SLOPE`, and `PH_OFFSET` values shipped in the sketch are placeholders and will not be accurate for your probes or soil.
-
-Type `cal` to enter calibration mode. It streams both analog channels twice a second with min/max/standard deviation, so you can see whether a reading has **settled** before capturing it:
+Every 15-second sensor cycle appends one row to `/soil_data/YYYY-MM/YYYY-MM-DD.csv`. Folder and file names and the `date_time` column use Philippine time (UTC+8); Firebase keeps using UTC. A row is written only after NTP has synced, so a device that never reaches the internet logs nothing.
 
 ```
-[CAL] MOIST raw=2871 min=2864 max=2879 sd=4.1 -> 18.4 %  |  PH raw=1783 v=1.4364 sd=2.7 -> pH 13.15
+date_time,moisture_pct,temp_c,ec_uscm,ph,nitrogen_mgkg,phosphorus_mgkg,potassium_mgkg,salinity,tds,light_lux,air_temp_c,humidity_pct
 ```
 
-While calibration mode is active, moisture and pH are marked untrusted. That keeps a probe sitting in a buffer solution out of `readings/monthly` entirely — the path that feeds crop recommendations — and publishes them as `0` placeholders in `readings/current`, exactly as an unwired sensor would.
+The first eleven columns match the standalone probe sketch, so its files can be merged with these. `temp_c` is soil temperature. An untrusted field is an empty cell, never `0`. If the card is missing or removed, logging retries every cycle; set `CROPCAST_SD_ENABLED false` in `secrets.h` to turn it off.
 
-| Sub-command | Effect |
-|---|---|
-| `dry` | Capture the moisture point in air (0 %) |
-| `wet` | Capture the moisture point in water (100 %) |
-| `ph <value>` | Capture a pH buffer, e.g. `ph 4.00` then `ph 6.86` |
-| `show` | Solve, validate, and print a block to paste into `secrets.h` |
-| `verify` | Re-measure and report the error against the captured points |
-| `reset` | Discard captured points |
-| `q` | Leave calibration mode |
-
-### Moisture — two-point linear
-
-Wipe and air-dry the probe, run `dry`. Then submerge it **only to the marked line** — going past it destroys a capacitive probe — and run `wet`. Those two means are the two constants:
-
-```
-percent = (DRY_RAW - raw) * 100 / (DRY_RAW - WET_RAW), clamped to 0..100
-```
-
-`show` refuses a result where dry does not read higher than wet (capacitive probes read higher when dry — reversed values mean the captures were swapped, or the probe is resistive). It warns when the span is under 300 counts, because then 1 % is under 3 ADC counts and noise dominates, and when a capture had a standard deviation above 40, meaning it had not settled.
-
-Calibrate in the actual field soil where possible. 0–100 % here means "air-dry to saturated", not volumetric water content.
-
-### pH — two-point from voltage
-
-Rinse the electrode in distilled water between buffers and blot it dry (do not wipe the bulb). Let each reading settle for 30–60 s, watching `sd` in the stream, then capture. Buffer sachets sold locally are 4.00 / 6.86 / 9.18, so `ph` takes any nominal value rather than assuming 4 and 7.
-
-```
-v = raw * 3.3 / 4095
-
-PH_SLOPE  = (phB - phA) / (vB - vA)
-PH_OFFSET = phA - PH_SLOPE * vA
-```
-
-Worked example — 4.00 reading 1.410 V and 6.86 reading 0.909 V:
-
-```
-PH_SLOPE  = (6.86 - 4.00) / (0.909 - 1.410) = 2.86 / -0.501 = -5.7086
-PH_OFFSET = 4.00 - (-5.7086 * 1.410)        = 4.00 + 8.049  = 12.0491
-```
-
-A negative slope is normal for the common analog pH boards. `show` prints the residual at each captured point and warns when the two buffers differ by less than 0.10 V (electrode not responding, loose BNC, or unsettled buffers) or when `|slope|` falls outside 2–10 pH/V.
-
-`show` ends with a paste-ready block:
-
-```
---- copy into secrets.h ---
-// calibrated 2026-09-07T05:12:44Z, firmware 2.0.0, device esp32-field-01
-#define CROPCAST_MOISTURE_DRY_RAW 3187   // air, sd 3.2
-#define CROPCAST_MOISTURE_WET_RAW 1402   // water, sd 5.8, span 1785
-#define CROPCAST_PH_SLOPE  -5.7086f // from pH 4.00 @ 1.4100 V and pH 6.86 @ 0.9090 V
-#define CROPCAST_PH_OFFSET 12.0491f
----------------------------
-```
-
-Paste it into `secrets.h` and reflash. Calibration lives there, not in the sketch, so per-device values stay out of git and every node can share one identical `.ino`.
+The probe's factory calibration is used as-is. Before trusting N/P/K for crop scoring, compare one reading against a laboratory soil test from the same spot.
 
 ## Bringing sensors online one at a time
 
-Mark a channel off in `secrets.h` (`CROPCAST_SENSOR_PH_ENABLED false`) or at runtime with `sensors ph off`. What gets published in each state:
+Mark a channel off in `secrets.h` (`CROPCAST_SENSOR_SOIL_ENABLED false`) or at runtime with `sensors soil off`. What gets published in each state:
 
 | State | `readings/current` | `readings/monthly` | `status` |
 |---|---|---|---|
@@ -182,9 +138,9 @@ Alongside `online`, `lastSeen`, `firmware`, and `sensors[]`, the firmware publis
 |---|---|
 | Console appears dead | Serial Monitor line ending must be Newline, baud 115200 |
 | `BH1750 not on the bus` | Run `scan`. Expect `0x23` (ADDR low) or `0x5C` (ADDR high). Check SDA 21 / SCL 22 and 3.3 V. |
-| `modbus 0xE2 (response timed out)` | Run `npk`. Check RO→16, DI→17, DE+RE→5, common ground, probe power, slave ID and baud. |
-| `modbus 0x02 (illegal data address)` | Wrong register. Try `npk 0x0000 4` and consult the probe manual. |
-| `raw pinned near 0` / `near 4095` | Analog pin is floating or shorted. The channel keeps polling and recovers on its own once it reads sanely. |
+| `SOIL: no response` | Run `soil`. Check TXD→16, RXD→17, yellow→A, blue→B, 12 V probe power, 12 V ground tied to ESP32 GND. |
+| `no valid frame (bad CRC or wrong slave id)` | Bytes arrive but do not decode. Swap A and B, then check the slave ID and 4800 baud in the probe manual. |
+| `SD: no card on CS GPIO 5` | Card missing or not FAT32. Check CS 5, SCK 18, MOSI 23, MISO 19 and 5 V. |
 | `clock not synced` | NTP is unreachable. Readings are withheld on purpose until it succeeds; `time sync` retries. |
 | Firebase error with `http 400` | The database rules rejected the write — usually a value outside the validated range. |
 | Firebase error with `http 401` | Authentication failed. Check the API key and that the firmware user exists in Firebase Authentication. |

@@ -73,16 +73,14 @@ Install these Arduino libraries:
 - Firebase Arduino Client Library for ESP8266 and ESP32 (`Firebase_ESP_Client`)
 - DHT sensor library
 - BH1750
-- ModbusMaster
 
-Copy `firmware/CropCastESP32/secrets.example.h` to `secrets.h`, fill in Wi-Fi/Firebase credentials, and create that email/password account in Firebase Authentication. Confirm your NPK probe register addresses and calibrate the pH and moisture constants before field use.
+Copy `firmware/CropCastESP32/secrets.example.h` to `secrets.h`, fill in Wi-Fi/Firebase credentials, and create that email/password account in Firebase Authentication. Select the **Huge APP (3MB No OTA)** partition scheme before uploading.
 
-The sample firmware wiring defaults are DHT11 GPIO 4, pH ADC GPIO 34, moisture ADC GPIO 35, RS485 RX/TX GPIO 16/17, and MAX485 DE/RE GPIO 5.
+The firmware wiring defaults are DHT11 GPIO 4, SN-3002 7-in-1 soil probe through an auto-direction TTL485 module on GPIO 16/17 (4800 baud, slave `1`), BH1750 on I²C GPIO 21/22, and a microSD card on SPI with CS GPIO 5. See `firmware/CropCastESP32/README.md`.
 
 ## Notes
 
-- The current pH equation and moisture raw limits are placeholders that require calibration with the real probes.
-- NPK register addresses vary by manufacturer; the firmware uses common registers `0x001E`–`0x0020` and slave ID `1`.
+- The 7-in-1 probe's factory calibration is used as-is. Compare its N/P/K against a laboratory soil test before relying on them for crop scoring.
 - Firebase timestamps use NTP-derived Unix milliseconds, which the app uses to determine whether the ESP32 was seen within the last two minutes.
 - The firmware stores one history sample per hour under a UTC `yyyy-MM` bucket. The dashboard validates readings, tracks monthly averages/ranges/variability, creates an observed recommendation for every eligible closed month, and forecasts the next month from the latest month, same-calendar-month history when available, and the three preceding complete months. The rule-based engine recommends the best-matching crop from Tomato, Okra, Alugbati, Potato, Rice, Corn, Eggplant, Cucumber, Cabbage, Sweet Potato, Lettuce, and Spinach using N, P, K, pH, soil moisture, temperature, and humidity.
 - The app's primary recommendation uses an experimental on-device Random Forest ranking from the public 22-crop dataset. The model uses N, P, K, temperature, humidity, and pH. Rainfall was excluded because the device has no verified rainfall input. Its saved metrics describe only a held-out portion of the public dataset and are not evidence of Philippine field accuracy; see `models/public_crop/README.md`.
