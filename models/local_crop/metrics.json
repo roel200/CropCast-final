@@ -1,0 +1,91 @@
+{
+  "model_version": "local-crop-random-forest-v1",
+  "trained_at_utc": "2026-09-27T11:35:13.744995+00:00",
+  "features": [
+    "N",
+    "P",
+    "K",
+    "temperature",
+    "humidity",
+    "ph"
+  ],
+  "classes": [
+    "Alugbati",
+    "Cabbage",
+    "Corn",
+    "Cucumber",
+    "Eggplant",
+    "Lettuce",
+    "Okra",
+    "Potato",
+    "Rice",
+    "Spinach",
+    "Sweet Potato",
+    "Tomato"
+  ],
+  "rows": 3600,
+  "npk_scale": 1.0,
+  "cv5_accuracy": 0.8808333333333334,
+  "cv5_top3_accuracy": 0.9936111111111111,
+  "training_ranges": {
+    "N": [
+      52.97171783674948,
+      223.34543171670578
+    ],
+    "P": [
+      27.66111757763846,
+      105.84010535528964
+    ],
+    "K": [
+      31.306332365325346,
+      227.58261254990515
+    ],
+    "temperature": [
+      12.004972586793134,
+      34.99514543620964
+    ],
+    "humidity": [
+      39.523119447977095,
+      99.90268630912999
+    ],
+    "ph": [
+      4.957204377690404,
+      8.029951407239528
+    ]
+  },
+  "wosis_topsoil_ph": {
+    "layers": 299,
+    "min": 4.1,
+    "median": 6.3,
+    "max": 8.2
+  },
+  "soilssync_ph_check": {
+    "Corn": {
+      "rows": 49,
+      "inside_optimal_ph": 30,
+      "inside_absolute_ph": 46
+    },
+    "Tomato": {
+      "rows": 9,
+      "inside_optimal_ph": 0,
+      "inside_absolute_ph": 5
+    },
+    "Rice": {
+      "rows": 7,
+      "inside_optimal_ph": 6,
+      "inside_absolute_ph": 7
+    }
+  },
+  "asset": "models\\local_crop\\local_crop_forest.bin",
+  "asset_size_bytes": 3536637,
+  "sources": {
+    "ecocrop": "FAO ECOCROP via Recocrop (github.com/cropmodels/Recocrop), CC BY 4.0",
+    "wosis": "ISRIC WoSIS latest, layer wosis_latest_phaq, country Philippines",
+    "npk_humidity": "data\\processed\\crop_requirements_selected.json"
+  },
+  "limitations": [
+    "Training rows are synthesized from published ranges; accuracy measures how well the forest separates those ranges, not field accuracy.",
+    "NPK ranges have no stated unit; set --npk-scale after a laboratory soil test.",
+    "Temperature is ECOCROP growing-season air temperature, not soil temperature."
+  ]
+}
