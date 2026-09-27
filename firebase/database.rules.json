@@ -68,6 +68,7 @@
           "soundEnabled": { ".validate": "newData.isBoolean()" },
           "vibrationEnabled": { ".validate": "newData.isBoolean()" },
           "darkModeEnabled": { ".validate": "newData.isBoolean()" },
+          "irrigationAvailable": { ".validate": "newData.isBoolean()" },
           "cloudHistoryEnabled": { ".validate": "newData.isBoolean()" },
           "diagnosticsEnabled": { ".validate": "newData.isBoolean()" }
         },

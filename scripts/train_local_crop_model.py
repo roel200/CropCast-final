@@ -45,7 +45,8 @@ ECOCROP_NAMES = {
     "Alugbati": "Ceylon spinach",
     "Potato": "Potato",
     "Rice": "Rice, paddy (Indica)",
-    "Corn": "Maize",
+    # Flint maize: its 90-140 day cycle matches Philippine corn; generic Maize runs to 365 days.
+    "Corn": "Flint maize",
     "Eggplant": "Eggplant",
     "Cucumber": "Cucumber",
     "Cabbage": "Cabbage",
@@ -65,9 +66,10 @@ def load_ecocrop() -> pd.DataFrame:
     selected = rows.loc[list(ECOCROP_NAMES.values())].reset_index()
     selected.insert(0, "crop", list(ECOCROP_NAMES))
     columns = ["crop", "NAME", "SCIENTNAME", "TMIN", "TOPMN", "TOPMX", "TMAX",
-               "PHMIN", "PHOPMN", "PHOPMX", "PHMAX", "RMIN", "ROPMN", "ROPMX", "RMAX", "TEXT"]
+               "PHMIN", "PHOPMN", "PHOPMX", "PHMAX", "RMIN", "ROPMN", "ROPMX", "RMAX", "TEXT", "GMIN", "GMAX"]
     selected = selected[columns]
-    selected[columns[3:-1]] = selected[columns[3:-1]].astype(float)
+    numeric = [c for c in columns[3:] if c != "TEXT"]
+    selected[numeric] = selected[numeric].astype(float)
     return selected
 
 

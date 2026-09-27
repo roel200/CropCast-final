@@ -14,7 +14,9 @@ import java.util.Locale
 data class ClimateNormals(
     val temperatureC: List<Double>,
     val humidityPct: List<Double>,
-    val rainfallMm: List<Double>
+    val rainfallMm: List<Double>,
+    /** Mean height of the NASA grid cell the normals describe. */
+    val cellElevationM: Double? = null
 ) {
     val annualRainfallMm: Double get() = rainfallMm.sum()
 }
@@ -24,7 +26,9 @@ data class WeatherOutlook(
     val meanTemperatureC: Double,
     val meanHumidityPct: Double,
     val rainfallMm: Double,
-    val days: Int
+    val days: Int,
+    /** Height of the farm itself, from Open-Meteo's 90 m terrain model. */
+    val elevationM: Double? = null
 )
 
 /** Mapped topsoil (0-30 cm) at the farm location. Any field can be missing. */
@@ -41,7 +45,9 @@ data class FarmSiteData(
     val normals: ClimateNormals? = null,
     val outlook: WeatherOutlook? = null,
     val soil: SoilMap? = null,
-    val status: Map<String, SourceStatus> = emptyMap()
+    val status: Map<String, SourceStatus> = emptyMap(),
+    /** Farm height when known without a forecast (validation fixtures). */
+    val elevationM: Double? = null
 )
 
 /**
@@ -118,7 +124,8 @@ class FarmSiteDataRepository(private val cacheDir: File) {
         private val DAYS_IN_MONTH = listOf(31.0, 28.25, 31.0, 30.0, 31.0, 30.0, 31.0, 31.0, 30.0, 31.0, 30.0, 31.0)
 
         internal fun parseNasaPowerClimatology(body: String): ClimateNormals {
-            val parameters = JSONObject(body).getJSONObject("properties").getJSONObject("parameter")
+            val root = JSONObject(body)
+            val parameters = root.getJSONObject("properties").getJSONObject("parameter")
             fun monthly(name: String): List<Double> {
                 val values = parameters.getJSONObject(name)
                 return MONTHS.map { month ->
@@ -129,12 +136,15 @@ class FarmSiteDataRepository(private val cacheDir: File) {
                 temperatureC = monthly("T2M"),
                 humidityPct = monthly("RH2M"),
                 // PRECTOTCORR is mm/day; convert to a monthly total.
-                rainfallMm = monthly("PRECTOTCORR").mapIndexed { index, perDay -> perDay * DAYS_IN_MONTH[index] }
+                rainfallMm = monthly("PRECTOTCORR").mapIndexed { index, perDay -> perDay * DAYS_IN_MONTH[index] },
+                cellElevationM = root.optJSONObject("geometry")?.optJSONArray("coordinates")
+                    ?.takeIf { it.length() >= 3 }?.getDouble(2)
             )
         }
 
         internal fun parseOpenMeteoForecast(body: String): WeatherOutlook {
-            val daily = JSONObject(body).getJSONObject("daily")
+            val root = JSONObject(body)
+            val daily = root.getJSONObject("daily")
             fun values(name: String): List<Double> {
                 val array = daily.getJSONArray(name)
                 return (0 until array.length()).filterNot(array::isNull).map(array::getDouble)
@@ -149,7 +159,8 @@ class FarmSiteDataRepository(private val cacheDir: File) {
                 meanTemperatureC = temperature.average(),
                 meanHumidityPct = humidity.average(),
                 rainfallMm = rain.sum(),
-                days = rain.size
+                days = rain.size,
+                elevationM = root.optDouble("elevation").takeIf { it.isFinite() }
             )
         }
 

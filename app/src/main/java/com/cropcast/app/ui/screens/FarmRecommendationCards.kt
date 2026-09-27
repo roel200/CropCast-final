@@ -36,6 +36,7 @@ import com.cropcast.app.ui.localization.tr
 import com.cropcast.app.ui.theme.CropGreen
 
 private val WarningColor = Color(0xFFE95D5D)
+private val MONTH_NAMES = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 private fun suitabilityColor(score: Int): Color = when {
     score >= 80 -> CropGreen
@@ -149,6 +150,14 @@ fun FarmFactorsCard(recommendation: FarmRecommendation) {
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 15.sp
             )
+            if (top.bestPlantingMonths.isNotEmpty() && top.bestPlantingMonths.size < 12) {
+                Text(
+                    "📅 ${tr("Best months to plant")}: ${top.bestPlantingMonths.joinToString { MONTH_NAMES[it - 1] }}",
+                    color = CropGreen,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp
+                )
+            }
             for (factor in top.factors) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -170,7 +179,7 @@ fun NutrientPlanCard(recommendation: FarmRecommendation) {
     RoundedCard(color = MaterialTheme.colorScheme.surface) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "🧪 ${tr("Fertilizer plan for")} ${top.crop.name}",
+                "🧪 ${tr("Soil and fertilizer plan for")} ${top.crop.name}",
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 15.sp
@@ -184,7 +193,9 @@ fun NutrientPlanCard(recommendation: FarmRecommendation) {
                 Column {
                     Row(Modifier.fillMaxWidth()) {
                         Text(
-                            "${tr(advice.nutrient)}: ${advice.measured.toInt()} (${tr("target")} ${advice.targetLow.toInt()}–${advice.targetHigh.toInt()})",
+                            // pH needs a decimal; N/P/K do not.
+                            (if (advice.nutrient == "Soil pH") "%s: %.1f (%s %.1f–%.1f)" else "%s: %.0f (%s %.0f–%.0f)")
+                                .format(tr(advice.nutrient), advice.measured, tr("target"), advice.targetLow, advice.targetHigh),
                             modifier = Modifier.weight(1f),
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 12.sp
@@ -195,7 +206,7 @@ fun NutrientPlanCard(recommendation: FarmRecommendation) {
                 }
             }
             Text(
-                tr("Nutrients do not change the crop ranking because fertilizer can correct them. Confirm exact rates with a soil laboratory test."),
+                tr("N, P and K do not change the crop ranking because fertilizer can correct them. Confirm exact rates with a soil laboratory test."),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .75f),
                 fontSize = 10.sp
             )

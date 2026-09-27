@@ -1,6 +1,6 @@
 {
   "model_version": "local-crop-random-forest-v1",
-  "trained_at_utc": "2026-09-27T11:35:13.744995+00:00",
+  "trained_at_utc": "2026-09-27T12:33:05.772787+00:00",
   "features": [
     "N",
     "P",
@@ -25,8 +25,8 @@
   ],
   "rows": 3600,
   "npk_scale": 1.0,
-  "cv5_accuracy": 0.8808333333333334,
-  "cv5_top3_accuracy": 0.9936111111111111,
+  "cv5_accuracy": 0.8766666666666667,
+  "cv5_top3_accuracy": 0.9938888888888889,
   "training_ranges": {
     "N": [
       52.97171783674948,
@@ -77,7 +77,7 @@
     }
   },
   "asset": "models\\local_crop\\local_crop_forest.bin",
-  "asset_size_bytes": 3536637,
+  "asset_size_bytes": 3536813,
   "sources": {
     "ecocrop": "FAO ECOCROP via Recocrop (github.com/cropmodels/Recocrop), CC BY 4.0",
     "wosis": "ISRIC WoSIS latest, layer wosis_latest_phaq, country Philippines",

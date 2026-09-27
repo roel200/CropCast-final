@@ -11,3 +11,6 @@ __pycache__/
 .venv/
 graphify-out/
 .kotlin/
+
+# validation download cache
+data/validation/.cache/

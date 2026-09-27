@@ -231,6 +231,14 @@ fun SettingsScreen(
                             onSaveSettings(state.settings.copy(plantingDate = it))
                         }
                     }
+                    Divider()
+                    SwitchRow(
+                        tr("Irrigation available"),
+                        tr("Dry months will not lower crop scores; too much rain still does"),
+                        state.settings.irrigationAvailable
+                    ) {
+                        onSaveSettings(state.settings.copy(irrigationAvailable = it))
+                    }
                 }
             }
 

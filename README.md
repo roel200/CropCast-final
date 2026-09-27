@@ -80,21 +80,24 @@ The firmware wiring defaults are DHT11 GPIO 4, SN-3002 7-in-1 soil probe through
 
 ## Crop recommendation engine
 
-The main recommendation (`FarmSuitabilityEngine`) ranks CropCast's 12 crops for the farm, planting this month. It uses the FAO ECOCROP method: each factor is scored on a trapezoid, 0 outside the crop's absolute range and 100 inside its optimal range.
+The main recommendation (`FarmSuitabilityEngine`) ranks CropCast's 12 crops for the farm, planting this month, and shows the best months to plant. Temperature and rain follow FAO's ECOCROP model exactly as its reference implementation (R package Recocrop) computes it: monthly climate is interpolated to half-months, each half-month is scored on the crop's trapezoid (0 outside the absolute range, 100 inside the optimal range), the worst half-month over the growing season counts, and ECOCROP's crop-cycle rain totals are converted to monthly limits.
 
-| Factor | Kind | Data source |
+| Factor | Role | Data source |
 |---|---|---|
-| Air temperature over the whole growing season | hard | NASA POWER 20-year monthly normals; the Open-Meteo 16-day forecast replaces the first month; DHT11 when offline |
-| Soil pH | hard | 7-in-1 soil probe; ISRIC SoilGrids map when the probe has no reading |
-| Rainfall over the growing season | soft | NASA POWER normals |
-| Soil texture (clay/sand) | soft | ISRIC SoilGrids |
-| Crop ranges | — | FAO ECOCROP (`data/processed/ecocrop_selected.csv`, bundled in the app) |
+| Air temperature over the growing season | caps the score | NASA POWER 20-year normals, corrected for the farm's elevation; the Open-Meteo 16-day forecast replaces the first month; DHT11 when offline |
+| Soil pH | scales the score (weight 0.5) | 7-in-1 soil probe; ISRIC SoilGrids map when the probe has no reading |
+| Rain over the growing season | scales the score (weight 0.3) | NASA POWER normals |
+| Soil texture (clay/sand) | scales the score (weight 0.2) | ISRIC SoilGrids |
+| Crop ranges and cycle lengths | — | FAO ECOCROP (`data/processed/ecocrop_selected.csv`, bundled in the app) |
 
-- **Hard factors** cannot be changed easily, so the weakest one caps the score (0 means the crop cannot grow there). **Soft factors** can lower the score by up to 30 %, because irrigation and drainage can manage them.
-- **N, P and K never change the ranking**, because fertilizer can correct them. They produce a fertilizer plan for the top crop instead. Set `FarmSuitabilityEngine.NPK_TABLE_SCALE` from a laboratory soil test before trusting the probe's mg/kg against the crop table.
-- **Warnings** compare the probe pH with the SoilGrids map (a gap over 1.0 means the probe needs checking), and flag heavy or light rain and high humidity in the forecast, and a dry recent month (Open-Meteo rainfall history).
-- **Data sources need no API key.** Every online answer is cached on the phone, so the last good copy is used without internet. With no location or no cache, the engine still ranks crops from the probe and the DHT11 alone.
-- Set the farm latitude and longitude in **Settings** to turn on the climate and soil data.
+- **Temperature caps the score** because a farmer cannot change it (0 means the crop cannot grow there). **pH, rain and texture scale it between 60 % and 100 %**, because lime or compost, irrigation and drainage can manage them. Unlike ECOCROP, pH is not absolute: validation showed tomato thriving on Ilocos soils above pH 7.5 and corn on Bukidnon soils below pH 4.5.
+- **Irrigation available** (Settings → Crop Profile) stops dry months from lowering scores; too much rain still counts. Validation against PSA harvest quarters favours this for dry-season vegetables and the rain-fed default for rice, corn and highland potato.
+- **Elevation correction:** NASA's ~50 km grid cell can sit far below or above the farm (Benguet's cell averages ~700 m), so normals are shifted by the standard lapse rate (6.5 °C per km) using the farm elevation from the forecast.
+- **N, P and K never change the ranking**, because fertilizer can correct them. With pH they produce the soil plan for the top crop (lime, compost, fertilizer). Set `FarmSuitabilityEngine.NPK_TABLE_SCALE` from a laboratory soil test before trusting the probe's mg/kg against the crop table.
+- **Corn uses ECOCROP's Flint maize**, whose 90–140 day cycle matches Philippine corn; the generic Maize entry runs to 365 days and distorts the rain limits.
+- **Warnings** compare the probe pH with the SoilGrids map, report the elevation correction, and flag heavy or light rain, high humidity and a dry recent month.
+- **Data sources need no API key.** Every online answer is cached on the phone, so the last good copy is used without internet. With no location or cache, the engine still ranks crops from the probe and the DHT11. Set the farm latitude and longitude in **Settings** to turn on climate and soil data.
+- **Validation:** see `data/validation/README.md`.
 
 ## Notes
 

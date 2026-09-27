@@ -62,6 +62,8 @@ data class AlertSettings(
     val currentCrop: String = "Rice",
     val cropVariety: String = "IR64",
     val plantingDate: String = "",
+    /** With irrigation, too little rain no longer lowers a crop's score. */
+    val irrigationAvailable: Boolean = false,
     val language: String = "English",
     val darkModeEnabled: Boolean = false,
     val cloudHistoryEnabled: Boolean = true,

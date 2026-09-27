@@ -152,12 +152,13 @@ fun CropCastApp(viewModel: CropCastViewModel) {
     // Monthly average once readings exist; the latest live reading before that.
     val farmSoil = state.monthlySummary.takeIf { it.hasData }?.average
         ?: state.reading.takeIf { it.isValidForRecommendation() }
-    val farmRecommendation = remember(farmSoil, siteData, rainfallState.estimate) {
+    val farmRecommendation = remember(farmSoil, siteData, rainfallState.estimate, state.settings.irrigationAvailable) {
         FarmSuitabilityEngine.recommend(
             soil = farmSoil,
             site = siteData,
             plantingMonth = LocalDate.now().monthValue,
-            recentRainMm = rainfallState.estimate?.millimeters
+            recentRainMm = rainfallState.estimate?.millimeters,
+            irrigated = state.settings.irrigationAvailable
         )
     }
     var selected by remember { mutableIntStateOf(0) }
