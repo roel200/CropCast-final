@@ -423,7 +423,7 @@ class CropCastViewModel(
         rating: Int,
         problems: String,
         rainfall: RainfallEstimate?,
-        modelUsesRainfall: Boolean
+        modelVariant: String
     ) {
         val normalizedCrop = plantedCrop.trim()
         when {
@@ -453,7 +453,7 @@ class CropCastViewModel(
             rainfallSource = rainfall?.source.orEmpty(),
             farmLatitude = state.settings.farmLatitude,
             farmLongitude = state.settings.farmLongitude,
-            modelVariant = if (modelUsesRainfall) "7-input-weather-rainfall-v1" else "6-input-fallback-v1",
+            modelVariant = modelVariant,
             submittedAt = System.currentTimeMillis()
         )
         if (state.isDemo) {

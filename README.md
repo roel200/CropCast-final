@@ -78,12 +78,30 @@ Copy `firmware/CropCastESP32/secrets.example.h` to `secrets.h`, fill in Wi-Fi/Fi
 
 The firmware wiring defaults are DHT11 GPIO 4, SN-3002 7-in-1 soil probe through an auto-direction TTL485 module on GPIO 16/17 (4800 baud, slave `1`), BH1750 on I²C GPIO 21/22, and a microSD card on SPI with CS GPIO 5. See `firmware/CropCastESP32/README.md`.
 
+## Crop recommendation engine
+
+The main recommendation (`FarmSuitabilityEngine`) ranks CropCast's 12 crops for the farm, planting this month. It uses the FAO ECOCROP method: each factor is scored on a trapezoid, 0 outside the crop's absolute range and 100 inside its optimal range.
+
+| Factor | Kind | Data source |
+|---|---|---|
+| Air temperature over the whole growing season | hard | NASA POWER 20-year monthly normals; the Open-Meteo 16-day forecast replaces the first month; DHT11 when offline |
+| Soil pH | hard | 7-in-1 soil probe; ISRIC SoilGrids map when the probe has no reading |
+| Rainfall over the growing season | soft | NASA POWER normals |
+| Soil texture (clay/sand) | soft | ISRIC SoilGrids |
+| Crop ranges | — | FAO ECOCROP (`data/processed/ecocrop_selected.csv`, bundled in the app) |
+
+- **Hard factors** cannot be changed easily, so the weakest one caps the score (0 means the crop cannot grow there). **Soft factors** can lower the score by up to 30 %, because irrigation and drainage can manage them.
+- **N, P and K never change the ranking**, because fertilizer can correct them. They produce a fertilizer plan for the top crop instead. Set `FarmSuitabilityEngine.NPK_TABLE_SCALE` from a laboratory soil test before trusting the probe's mg/kg against the crop table.
+- **Warnings** compare the probe pH with the SoilGrids map (a gap over 1.0 means the probe needs checking), and flag heavy or light rain and high humidity in the forecast, and a dry recent month (Open-Meteo rainfall history).
+- **Data sources need no API key.** Every online answer is cached on the phone, so the last good copy is used without internet. With no location or no cache, the engine still ranks crops from the probe and the DHT11 alone.
+- Set the farm latitude and longitude in **Settings** to turn on the climate and soil data.
+
 ## Notes
 
 - The 7-in-1 probe's factory calibration is used as-is. Compare its N/P/K against a laboratory soil test before relying on them for crop scoring.
 - Firebase timestamps use NTP-derived Unix milliseconds, which the app uses to determine whether the ESP32 was seen within the last two minutes.
 - The firmware stores one history sample per hour under a UTC `yyyy-MM` bucket. The dashboard validates readings, tracks monthly averages/ranges/variability, creates an observed recommendation for every eligible closed month, and forecasts the next month from the latest month, same-calendar-month history when available, and the three preceding complete months. The rule-based engine recommends the best-matching crop from Tomato, Okra, Alugbati, Potato, Rice, Corn, Eggplant, Cucumber, Cabbage, Sweet Potato, Lettuce, and Spinach using N, P, K, pH, soil moisture, temperature, and humidity.
-- The app's primary recommendation uses an experimental on-device Random Forest ranking from the public 22-crop dataset. The model uses N, P, K, temperature, humidity, and pH. Rainfall was excluded because the device has no verified rainfall input. Its saved metrics describe only a held-out portion of the public dataset and are not evidence of Philippine field accuracy; see `models/public_crop/README.md`.
+- The Crop Recommendation screen also shows, for comparison, an experimental on-device Random Forest trained on the public 22-crop dataset (N, P, K, temperature, humidity, pH). Its saved metrics describe only a held-out portion of that dataset and are not evidence of Philippine field accuracy; see `models/public_crop/README.md`.
 - Recommendations show the runner-up, confidence, unstable fields, month-to-month trends, and general Philippine wet/dry-season guidance. This seasonal note is advisory and explicitly asks the farmer to confirm a local weather forecast.
 - Farmers can save planting outcomes under `devices/{deviceId}/recommendations/feedback`. A crop's score receives a conservative local adjustment only after at least three valid 1–5 outcome ratings; harvest weight and notes are stored for later evaluation but do not change the score because field area and yield units are not yet normalized.
 - Light remains visible in the dashboard but is intentionally excluded from crop scoring until crop-specific lux thresholds are validated. The tomato reference dataset's solar radiation in `W/m2` is not converted to lux.

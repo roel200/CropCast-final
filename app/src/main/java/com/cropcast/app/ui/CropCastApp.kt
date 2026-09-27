@@ -54,7 +54,11 @@ import com.cropcast.app.ui.screens.SensorDashboardScreen
 import com.cropcast.app.ui.screens.SettingsScreen
 import com.cropcast.app.ui.screens.LoginScreen
 import com.cropcast.app.R
+import com.cropcast.app.data.FarmSiteData
+import com.cropcast.app.data.FarmSiteDataRepository
+import com.cropcast.app.data.FarmSuitabilityEngine
 import com.cropcast.app.data.PublicCropModelEngine
+import com.cropcast.app.data.model.isValidForRecommendation
 import com.cropcast.app.data.PublicCropRecommendationResult
 import com.cropcast.app.data.RainfallState
 import com.cropcast.app.data.RainfallStatus
@@ -64,6 +68,7 @@ import com.cropcast.app.ui.theme.CropGreen
 import com.cropcast.app.ui.theme.CropCastTheme
 import com.cropcast.app.ui.localization.LocalCropCastLanguage
 import com.cropcast.app.ui.localization.tr
+import java.time.LocalDate
 
 private data class NavItem(val label: String, val icon: ImageVector)
 
@@ -138,6 +143,23 @@ fun CropCastApp(viewModel: CropCastViewModel) {
             )
         }
     }
+    val siteRepository = remember(context) { FarmSiteDataRepository(context.cacheDir) }
+    val siteData by produceState<FarmSiteData?>(initialValue = null, coordinates) {
+        value = null
+        coordinates?.let { (latitude, longitude) -> siteRepository.load(latitude, longitude).collect { value = it } }
+    }
+    val loadingSiteData = coordinates != null && (siteData?.status?.size ?: 0) < 3
+    // Monthly average once readings exist; the latest live reading before that.
+    val farmSoil = state.monthlySummary.takeIf { it.hasData }?.average
+        ?: state.reading.takeIf { it.isValidForRecommendation() }
+    val farmRecommendation = remember(farmSoil, siteData, rainfallState.estimate) {
+        FarmSuitabilityEngine.recommend(
+            soil = farmSoil,
+            site = siteData,
+            plantingMonth = LocalDate.now().monthValue,
+            recentRainMm = rainfallState.estimate?.millimeters
+        )
+    }
     var selected by remember { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
     CropCastTheme(darkTheme = state.settings.darkModeEnabled) {
@@ -209,29 +231,40 @@ fun CropCastApp(viewModel: CropCastViewModel) {
                 when (selected) {
                     0 -> HomeScreen(
                         state = state,
-                        publicRecommendation = publicRecommendation,
-                        publicModelAvailable = publicCropModel != null || rainfallCropModel != null,
+                        farmRecommendation = farmRecommendation,
+                        loadingSiteData = loadingSiteData,
                         onOpenRecommendations = { selected = 1 },
                         onOpenSensors = { selected = 2 }
                     )
                     1 -> SeedsScreen(
+                        farmRecommendation = farmRecommendation,
+                        loadingSiteData = loadingSiteData,
                         monthlySummary = state.monthlySummary,
                         publicRecommendation = publicRecommendation,
                         rainfallState = rainfallState,
                         publicModelAvailable = publicCropModel != null || rainfallCropModel != null,
                         outcomeCount = state.outcomeFeedback.size,
                         onSaveOutcome = { plantedCrop, harvestedKg, rating, problems ->
+                            val farmTop = farmRecommendation.top
                             val prediction = publicRecommendation?.predictions?.firstOrNull()
-                                ?: return@SeedsScreen
+                            val (recommendedCrop, score, variant) = when {
+                                farmTop != null -> Triple(farmTop.crop.name, farmTop.score / 100.0, "farm-suitability-v1")
+                                prediction != null -> Triple(
+                                    prediction.cropName,
+                                    prediction.modelScore,
+                                    if (publicRecommendation?.usesRainfall == true) "7-input-weather-rainfall-v1" else "6-input-fallback-v1"
+                                )
+                                else -> return@SeedsScreen
+                            }
                             viewModel.saveCropOutcome(
-                                recommendedCrop = prediction.cropName,
-                                recommendationScore = prediction.modelScore,
+                                recommendedCrop = recommendedCrop,
+                                recommendationScore = score,
                                 plantedCrop = plantedCrop,
                                 harvestedKg = harvestedKg,
                                 rating = rating,
                                 problems = problems,
                                 rainfall = rainfallState.estimate,
-                                modelUsesRainfall = publicRecommendation.usesRainfall
+                                modelVariant = variant
                             )
                         }
                     )

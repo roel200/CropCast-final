@@ -10,6 +10,30 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlin.math.min
 
+/** Blocking GET for the keyless JSON services CropCast uses. Call from Dispatchers.IO. */
+internal fun httpGetText(url: String, readTimeoutMs: Int = 15_000): String {
+    val connection = URL(url).openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 10_000
+        connection.readTimeout = readTimeoutMs
+        connection.setRequestProperty("Accept", "application/json")
+        val responseCode = connection.responseCode
+        val body = (if (responseCode in 200..299) connection.inputStream else connection.errorStream)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            .orEmpty()
+        check(responseCode in 200..299) {
+            runCatching { JSONObject(body).optString("reason") }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: "Service returned HTTP $responseCode"
+        }
+        return body
+    } finally {
+        connection.disconnect()
+    }
+}
+
 enum class RainfallStatus {
     NOT_CONFIGURED,
     LOADING,
@@ -45,33 +69,16 @@ class WeatherRainfallRepository {
             ?: yesterday
         val endDate = if (readingDate.isBefore(yesterday)) readingDate else yesterday
         val startDate = endDate.minusDays(RAINFALL_WINDOW_DAYS - 1L)
-        val endpoint = URL(
+        val body = httpGetText(
             "$ARCHIVE_ENDPOINT?latitude=$latitude&longitude=$longitude" +
                 "&start_date=$startDate&end_date=$endDate" +
                 "&daily=rain_sum&precipitation_unit=mm&timezone=auto"
         )
-        val connection = endpoint.openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10_000
-            connection.readTimeout = 15_000
-            connection.setRequestProperty("Accept", "application/json")
-            val responseCode = connection.responseCode
-            val body = (if (responseCode in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader()
-                ?.use { it.readText() }
-                .orEmpty()
-            check(responseCode in 200..299) {
-                JSONObject(body.ifBlank { "{}" }).optString("reason", "Weather service returned $responseCode")
-            }
-            RainfallEstimate(
-                millimeters = parseRainfallTotal(body),
-                startDate = startDate.toString(),
-                endDate = endDate.toString()
-            )
-        } finally {
-            connection.disconnect()
-        }
+        RainfallEstimate(
+            millimeters = parseRainfallTotal(body),
+            startDate = startDate.toString(),
+            endDate = endDate.toString()
+        )
     }
 
     companion object {

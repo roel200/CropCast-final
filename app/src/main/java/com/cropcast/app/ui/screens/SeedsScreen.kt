@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cropcast.app.R
+import com.cropcast.app.data.FarmRecommendation
 import com.cropcast.app.data.PublicCropPrediction
 import com.cropcast.app.data.PublicCropRecommendationResult
 import com.cropcast.app.data.PublicCropResultStatus
@@ -54,6 +55,8 @@ import kotlin.math.abs
 
 @Composable
 fun SeedsScreen(
+    farmRecommendation: FarmRecommendation?,
+    loadingSiteData: Boolean,
     monthlySummary: MonthlySensorSummary,
     publicRecommendation: PublicCropRecommendationResult?,
     rainfallState: RainfallState,
@@ -67,8 +70,15 @@ fun SeedsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { SectionTitle("✨", tr("Crop Recommendation")) }
-        item { MlRecommendationSummaryCard(publicRecommendation, monthlySummary) }
+        item { FarmRecommendationCard(farmRecommendation, loadingSiteData) }
+        farmRecommendation?.takeIf { it.top != null }?.let { farm ->
+            item { FarmFactorsCard(farm) }
+            item { NutrientPlanCard(farm) }
+            item { FarmNoticesCard(farm) }
+        }
         item { RecommendationCaveat() }
+        item { SectionTitle("🤖", tr("Comparison: 22-crop ML model")) }
+        item { MlRecommendationSummaryCard(publicRecommendation, monthlySummary) }
         item {
             PublicCropModelCard(
                 recommendation = publicRecommendation,
@@ -77,10 +87,12 @@ fun SeedsScreen(
                 modelAvailable = publicModelAvailable
             )
         }
-        publicRecommendation?.predictions?.firstOrNull()?.let { prediction ->
+        val recommendedCrop = farmRecommendation?.top?.crop?.name
+            ?: publicRecommendation?.predictions?.firstOrNull()?.cropName
+        recommendedCrop?.let { cropName ->
             item {
                 OutcomeFeedbackCard(
-                    prediction = prediction,
+                    cropName = cropName,
                     outcomeCount = outcomeCount,
                     onRecordOutcome = { showOutcomeDialog = true }
                 )
@@ -91,7 +103,8 @@ fun SeedsScreen(
 
     if (showOutcomeDialog) {
         OutcomeFeedbackDialog(
-            suggestedCrop = publicRecommendation?.predictions?.firstOrNull()?.cropName.orEmpty(),
+            suggestedCrop = farmRecommendation?.top?.crop?.name
+                ?: publicRecommendation?.predictions?.firstOrNull()?.cropName.orEmpty(),
             onDismiss = { showOutcomeDialog = false },
             onSave = { plantedCrop, harvestedKg, rating, problems ->
                 onSaveOutcome(plantedCrop, harvestedKg, rating, problems)
@@ -304,7 +317,7 @@ private fun MlRecommendationSummaryCard(
 
 @Composable
 private fun OutcomeFeedbackCard(
-    prediction: PublicCropPrediction,
+    cropName: String,
     outcomeCount: Int,
     onRecordOutcome: () -> Unit
 ) {
@@ -318,7 +331,7 @@ private fun OutcomeFeedbackCard(
             )
             Text(
                 "${tr("Save what was planted and the harvest result for future local validation")}. " +
-                    "${tr("Current recommendation")}: ${prediction.cropName}.",
+                    "${tr("Current recommendation")}: $cropName.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )

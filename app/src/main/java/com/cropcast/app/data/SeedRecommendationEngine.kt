@@ -27,7 +27,7 @@ object SeedRecommendationEngine {
     const val OBSERVED_MONTH = "observed_month"
     const val NEXT_MONTH_FORECAST = "next_month_forecast"
 
-    private data class CropProfile(
+    internal data class CropProfile(
         val name: String,
         val variety: String,
         val icon: String,
@@ -47,7 +47,7 @@ object SeedRecommendationEngine {
     // an NPK unit, so these are prototype suitability ranges until the RS485
     // readings are checked against a laboratory soil test. Moisture ranges are
     // explicit local-calibration defaults recorded in that processed table.
-    private val crops = listOf(
+    internal val crops = listOf(
         CropProfile(
             "Tomato", "Roma", "🍅", 80, "Loamy",
             temp = 18.0..25.0,
