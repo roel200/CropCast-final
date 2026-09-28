@@ -153,7 +153,7 @@ fun CropCastApp(viewModel: CropCastViewModel) {
         value = null
         coordinates?.let { (latitude, longitude) -> siteRepository.load(latitude, longitude).collect { value = it } }
     }
-    val loadingSiteData = coordinates != null && (siteData?.status?.size ?: 0) < 3
+    val loadingSiteData = coordinates != null && (siteData?.status?.size ?: 0) < FarmSiteDataRepository.SOURCES.size
     // A field sample from the last 180 days wins (it covers the whole field); then the
     // monthly average; then the latest live reading.
     val farmSoil = state.fieldSample?.takeIf { System.currentTimeMillis() - it.takenAt < 180L * 86_400_000L }?.average

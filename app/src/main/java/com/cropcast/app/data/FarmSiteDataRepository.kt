@@ -16,7 +16,9 @@ data class ClimateNormals(
     val humidityPct: List<Double>,
     val rainfallMm: List<Double>,
     /** Mean height of the NASA grid cell the normals describe. */
-    val cellElevationM: Double? = null
+    val cellElevationM: Double? = null,
+    /** Months (1-12) replaced by the ECMWF seasonal forecast. */
+    val forecastMonths: Set<Int> = emptySet()
 ) {
     val annualRainfallMm: Double get() = rainfallMm.sum()
 }
@@ -28,7 +30,24 @@ data class WeatherOutlook(
     val rainfallMm: Double,
     val days: Int,
     /** Height of the farm itself, from Open-Meteo's 90 m terrain model. */
-    val elevationM: Double? = null
+    val elevationM: Double? = null,
+    /** Day by day, same order: ISO dates, rain (mm) and maximum wind gust (km/h). */
+    val dailyDates: List<String> = emptyList(),
+    val dailyRainMm: List<Double> = emptyList(),
+    val dailyGustKmh: List<Double> = emptyList()
+)
+
+/** ECMWF SEAS5 seasonal forecast months, plus the farm elevation the API reports. */
+data class SeasonalForecast(val months: List<SeasonalMonth>, val elevationM: Double?)
+
+/** One month of the ECMWF SEAS5 seasonal forecast (ensemble mean). */
+data class SeasonalMonth(
+    val year: Int,
+    val month: Int,
+    val rainfallMm: Double,
+    /** Forecast minus ECMWF's own long-term average for that month. */
+    val rainfallAnomalyMm: Double,
+    val temperatureAnomalyC: Double
 )
 
 /** Mapped topsoil (0-30 cm) at the farm location. Any field can be missing. */
@@ -45,6 +64,7 @@ data class FarmSiteData(
     val normals: ClimateNormals? = null,
     val outlook: WeatherOutlook? = null,
     val soil: SoilMap? = null,
+    val seasonal: List<SeasonalMonth>? = null,
     val status: Map<String, SourceStatus> = emptyMap(),
     /** Farm height when known without a forecast (validation fixtures). */
     val elevationM: Double? = null
@@ -82,7 +102,7 @@ class FarmSiteDataRepository(private val cacheDir: File) {
         launch(Dispatchers.IO) {
             val (status, outlook) = fetch(OPEN_METEO_FORECAST, location, ::parseOpenMeteoForecast) {
                 "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
-                    "&daily=temperature_2m_mean,relative_humidity_2m_mean,precipitation_sum" +
+                    "&daily=temperature_2m_mean,relative_humidity_2m_mean,precipitation_sum,wind_gusts_10m_max" +
                     "&forecast_days=16&timezone=auto"
             }
             publish { it.copy(outlook = outlook, status = it.status + (OPEN_METEO_FORECAST to status)) }
@@ -94,6 +114,21 @@ class FarmSiteDataRepository(private val cacheDir: File) {
                     "&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean"
             }
             publish { it.copy(soil = soil, status = it.status + (SOILGRIDS to status)) }
+        }
+        launch(Dispatchers.IO) {
+            val (status, seasonal) = fetch(ECMWF_SEASONAL, location, ::parseSeasonalForecast) {
+                "https://seasonal-api.open-meteo.com/v1/seasonal?latitude=$lat&longitude=$lon" +
+                    "&monthly=precipitation_mean,precipitation_anomaly,temperature_2m_anomaly"
+            }
+            // Its elevation keeps the highland temperature correction working when the
+            // 16-day forecast (the other elevation source) is unavailable.
+            publish {
+                it.copy(
+                    seasonal = seasonal?.months,
+                    elevationM = it.elevationM ?: seasonal?.elevationM,
+                    status = it.status + (ECMWF_SEASONAL to status)
+                )
+            }
         }
     }
 
@@ -119,6 +154,8 @@ class FarmSiteDataRepository(private val cacheDir: File) {
         const val NASA_POWER = "NASA POWER climate normals"
         const val OPEN_METEO_FORECAST = "Open-Meteo 16-day forecast"
         const val SOILGRIDS = "ISRIC SoilGrids soil map"
+        const val ECMWF_SEASONAL = "ECMWF seasonal forecast"
+        val SOURCES = listOf(NASA_POWER, OPEN_METEO_FORECAST, SOILGRIDS, ECMWF_SEASONAL)
 
         private val MONTHS = listOf("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
         private val DAYS_IN_MONTH = listOf(31.0, 28.25, 31.0, 30.0, 31.0, 30.0, 31.0, 31.0, 30.0, 31.0, 30.0, 31.0)
@@ -146,7 +183,7 @@ class FarmSiteDataRepository(private val cacheDir: File) {
             val root = JSONObject(body)
             val daily = root.getJSONObject("daily")
             fun values(name: String): List<Double> {
-                val array = daily.getJSONArray(name)
+                val array = daily.optJSONArray(name) ?: return emptyList()
                 return (0 until array.length()).filterNot(array::isNull).map(array::getDouble)
             }
             val temperature = values("temperature_2m_mean")
@@ -155,13 +192,39 @@ class FarmSiteDataRepository(private val cacheDir: File) {
             check(temperature.isNotEmpty() && humidity.isNotEmpty() && rain.isNotEmpty()) {
                 "Forecast response had no usable daily values"
             }
+            // Keep the day-by-day lists aligned: only days that have both a date and rain.
+            val dates = daily.optJSONArray("time")
+            val rainArray = daily.getJSONArray("precipitation_sum")
+            val gustArray = daily.optJSONArray("wind_gusts_10m_max")
+            val days = (0 until rainArray.length()).filter { !rainArray.isNull(it) && dates != null && it < dates.length() }
             return WeatherOutlook(
                 meanTemperatureC = temperature.average(),
                 meanHumidityPct = humidity.average(),
                 rainfallMm = rain.sum(),
                 days = rain.size,
-                elevationM = root.optDouble("elevation").takeIf { it.isFinite() }
+                elevationM = root.optDouble("elevation").takeIf { it.isFinite() },
+                dailyDates = days.map { dates!!.getString(it) },
+                dailyRainMm = days.map(rainArray::getDouble),
+                dailyGustKmh = if (gustArray == null) emptyList()
+                else days.map { if (it < gustArray.length() && !gustArray.isNull(it)) gustArray.getDouble(it) else 0.0 }
             )
+        }
+
+        internal fun parseSeasonalForecast(body: String): SeasonalForecast {
+            val root = JSONObject(body)
+            val monthly = root.getJSONObject("monthly")
+            val time = monthly.getJSONArray("time")
+            val rain = monthly.getJSONArray("precipitation_mean")
+            val rainAnomaly = monthly.getJSONArray("precipitation_anomaly")
+            val temperatureAnomaly = monthly.getJSONArray("temperature_2m_anomaly")
+            val months = (0 until time.length())
+                .filter { !rain.isNull(it) && !rainAnomaly.isNull(it) && !temperatureAnomaly.isNull(it) }
+                .map { i ->
+                    val (year, month) = time.getString(i).split("-").map(String::toInt)
+                    SeasonalMonth(year, month, rain.getDouble(i), rainAnomaly.getDouble(i), temperatureAnomaly.getDouble(i))
+                }
+            check(months.isNotEmpty()) { "Seasonal forecast had no usable months" }
+            return SeasonalForecast(months, root.optDouble("elevation").takeIf { it.isFinite() })
         }
 
         /** Thickness-weighted 0-30 cm average; SoilGrids returns null over water and cities. */

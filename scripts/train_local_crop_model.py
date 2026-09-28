@@ -76,9 +76,9 @@ def load_ecocrop(names: dict[str, str] = ECOCROP_NAMES) -> pd.DataFrame:
     selected = rows.loc[list(names.values())].reset_index()
     selected.insert(0, "crop", list(names))
     columns = ["crop", "NAME", "SCIENTNAME", "TMIN", "TOPMN", "TOPMX", "TMAX",
-               "PHMIN", "PHOPMN", "PHOPMX", "PHMAX", "RMIN", "ROPMN", "ROPMX", "RMAX", "TEXT", "GMIN", "GMAX"]
+               "PHMIN", "PHOPMN", "PHOPMX", "PHMAX", "RMIN", "ROPMN", "ROPMX", "RMAX", "TEXT", "GMIN", "GMAX", "DRAR"]
     selected = selected[columns]
-    numeric = [c for c in columns[3:] if c != "TEXT"]
+    numeric = [c for c in columns[3:] if c not in ("TEXT", "DRAR")]
     selected[numeric] = selected[numeric].astype(float)
     return selected
 

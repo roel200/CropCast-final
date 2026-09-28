@@ -90,10 +90,16 @@ The main recommendation (`FarmSuitabilityEngine`) ranks 17 crops for the farm: t
 | Soil texture (clay/sand) | scales the score (weight 0.2) | ISRIC SoilGrids |
 | Soil salinity | multiplies by FAO relative yield | Probe EC, scored with FAO's crop salt tolerance (Maas–Hoffman threshold and slope) |
 | Wet-season disease | multiplies by 0.85 in wet, warm seasons | Tomato, eggplant and potato family; cucumber, ampalaya and kalabasa family; cabbage and pechay family |
+| Heavy rain at planting | multiplies by 0.85 (50–100 mm/day) or 0.70 (100 mm/day or more) | Open-Meteo 16-day forecast, PAGASA rainfall categories. Only crops that need well-drained soil in ECOCROP; rice, kangkong and sitaw tolerate waterlogging |
 | Crop ranges and cycle lengths | — | FAO ECOCROP (`data/processed/ecocrop_selected.csv`, bundled in the app) |
 
 - **Temperature caps the score** because a farmer cannot change it (0 means the crop cannot grow there). **pH, rain and texture scale it between 60 % and 100 %**, because lime or compost, irrigation and drainage can manage them. Unlike ECOCROP, pH is not absolute: validation showed tomato thriving on Ilocos soils above pH 7.5 and corn on Bukidnon soils below pH 4.5.
 - **FAO classes:** S1 highly suitable (80+), S2 moderately (60–79), S3 marginally (40–59), N not suitable (below 40).
+- **Prediction, not just today's weather:**
+  - *Whole season:* the ECMWF SEAS5 seasonal forecast (via Open-Meteo, up to 6 months) replaces the normals for the months it covers. Rain is scaled by the forecast's ratio to ECMWF's own average, which cancels the model's local bias; temperature gets the forecast anomaly. A predicted wet season lowers crops that need little water; a predicted dry season lowers water-hungry crops unless irrigation is on.
+  - *Planting window:* heavy rain forecast in the next 16 days lowers crops that need well-drained soil, and the app gives the first safe planting date after the last heavy-rain day.
+  - *Wind:* gusts of 62 km/h or more (PAGASA Wind Signal No. 2) trigger a warning to stake crops and delay transplanting.
+  - *Typhoons:* tall crops are flagged when their flowering and ripening months fall in July–November; PAGASA's wind signals describe crop damage as worst at those stages.
 - **Irrigation available** (Settings → Crop Profile) stops dry months from lowering scores; too much rain still counts. Validation against PSA harvest quarters favours this for dry-season vegetables and the rain-fed default for rice, corn and highland potato.
 - **Elevation correction:** NASA's ~50 km grid cell can sit far below or above the farm (Benguet's cell averages ~700 m), so normals are shifted by the standard lapse rate (6.5 °C per km) using the farm elevation from the forecast.
 - **Soil and fertilizer plan** for the top crop:
@@ -112,7 +118,8 @@ The main recommendation (`FarmSuitabilityEngine`) ranks 17 crops for the farm: t
 - **Calibration knobs** in `FarmSuitabilityEngine`:
   - `SOIL_TEST_LEVELS` and `PROBE_EC_TO_ECE`: set both from one BSWM laboratory test taken at the same spot as a probe reading.
   - `WET_SEASON_LOSS_PCT`: the flat 15 % wet-season loss.
-- **Warnings** compare the probe pH with the SoilGrids map, flag saline soil (ECe 4 dS/m or more), report the elevation correction, flag heavy or light rain, high humidity and a dry recent month, and repeat the top crop's season risks.
+  - `HEAVY_RAIN_LOSS_PCT` and `INTENSE_RAIN_LOSS_PCT`: the 15 % and 30 % planting-window losses, which are estimates.
+- **Warnings** compare the probe pH with the SoilGrids map, flag saline soil (ECe 4 dS/m or more), and report the elevation correction. They summarize the seasonal forecast (months 25 % or more drier or wetter than normal, and warming of 1 °C or more). They flag heavy rain with a safe planting date, gale-force gusts, little rain, high humidity and a dry recent month, and repeat the top crop's season risks.
 - **Data sources need no API key.** Every online answer is cached on the phone, so the last good copy is used without internet. With no location or cache, the engine still ranks crops from the probe and the DHT11. Set the farm latitude and longitude in **Settings** to turn on climate and soil data.
 - **Validation:** see `data/validation/README.md`.
 

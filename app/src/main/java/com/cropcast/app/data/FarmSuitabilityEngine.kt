@@ -3,6 +3,12 @@ package com.cropcast.app.data
 import com.cropcast.app.data.model.SeedRecommendation
 import com.cropcast.app.data.model.SensorReading
 import org.json.JSONObject
+import java.time.LocalDate
+import java.time.Month
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.min
@@ -206,6 +212,21 @@ object FarmSuitabilityEngine {
     /** Bacterial wilt and fusarium (Solanaceae, Cucurbitaceae), clubroot and black rot (Brassicaceae). */
     private val ROTATION_FAMILIES = setOf("Solanaceae", "Cucurbitaceae", "Brassicaceae")
 
+    /** ECOCROP's absolute drainage range includes "poorly drained" (DRAR has I): they tolerate waterlogging. */
+    internal val FLOOD_TOLERANT = setOf("Rice", "Kangkong", "Sitaw")
+
+    /** PAGASA 24-hour rainfall categories: moderate to heavy 50-100 mm, heavy to intense 100-200 mm. */
+    internal const val HEAVY_RAIN_MM = 50.0
+    internal const val INTENSE_RAIN_MM = 100.0
+
+    /** PAGASA Tropical Cyclone Wind Signal No. 2, gale-force winds: 62-88 km/h. */
+    internal const val GALE_GUST_KMH = 62.0
+
+    // ponytail: yield lost when a crop that cannot take waterlogging is planted just before
+    // heavy rain (seedlings rot or wash out). Heuristic; replace with local trial data.
+    internal const val HEAVY_RAIN_LOSS_PCT = 15
+    internal const val INTENSE_RAIN_LOSS_PCT = 30
+
     /** Staked, trellised or tall crops that typhoon winds flatten. */
     private val TALL = setOf("Tomato", "Okra", "Rice", "Corn", "Eggplant", "Cucumber", "Ampalaya", "Sitaw")
 
@@ -288,7 +309,7 @@ object FarmSuitabilityEngine {
         return FarmRecommendation(
             ranked = ranked,
             nutrientPlan = topCrop?.let { nutrientPlan(it, probe) }.orEmpty(),
-            warnings = warnings(probe, site, climate, recentRainMm) +
+            warnings = warnings(probe, site, recentRainMm) +
                 ranked.firstOrNull()?.risks.orEmpty().map { "${ranked.first().crop.name}: $it" },
             sources = sources.toList()
         )
@@ -323,7 +344,8 @@ object FarmSuitabilityEngine {
 
     private const val SALINITY = "Soil salinity"
     private const val DISEASE = "Wet-season disease"
-    private val YIELD_LOSSES = setOf(SALINITY, DISEASE)
+    private const val PLANTING_RAIN = "Heavy rain at planting"
+    private val YIELD_LOSSES = setOf(SALINITY, DISEASE, PLANTING_RAIN)
 
     /** Families whose wet-season diseases shape Philippine planting calendars, with the advice shown. */
     internal val WET_SEASON_DISEASE = mapOf(
@@ -354,7 +376,8 @@ object FarmSuitabilityEngine {
         rainfallFactor(range, plantingMonth, climate, irrigated),
         textureFactor(range, map),
         salinityFactor(crop, probe),
-        diseaseFactor(crop, range, plantingMonth, climate)
+        diseaseFactor(crop, range, plantingMonth, climate),
+        plantingRainFactor(crop, outlook)  // outlook is only passed for the planting month
     )
 
     /**
@@ -365,12 +388,53 @@ object FarmSuitabilityEngine {
      */
     internal fun siteClimate(site: FarmSiteData?): ClimateNormals? {
         val normals = site?.normals ?: return null
-        val farm = site.outlook?.elevationM ?: site.elevationM
-        val cell = normals.cellElevationM
-        if (farm == null || cell == null) return normals
-        val shift = -LAPSE_RATE * (farm - cell)
-        return normals.copy(temperatureC = normals.temperatureC.map { it + shift }, cellElevationM = farm)
+        val shift = elevationShift(site)
+        val temperature = normals.temperatureC.map { it + shift }.toMutableList()
+        val rain = normals.rainfallMm.toMutableList()
+        // The seasonal forecast replaces the normals for the months it covers, so the whole
+        // growing season is scored on what is predicted, not only on the long-term average.
+        val forecast = upcomingSeasonal(site)
+        for (month in forecast) {
+            temperature[month.month - 1] += month.temperatureAnomalyC
+            rain[month.month - 1] *= seasonalRainRatio(month)
+        }
+        return normals.copy(
+            temperatureC = temperature,
+            rainfallMm = rain,
+            cellElevationM = if (shift != 0.0) site.outlook?.elevationM ?: site.elevationM else normals.cellElevationM,
+            forecastMonths = forecast.map { it.month }.toSet()
+        )
     }
+
+    private fun elevationShift(site: FarmSiteData): Double {
+        val farm = site.outlook?.elevationM ?: site.elevationM ?: return 0.0
+        val cell = site.normals?.cellElevationM ?: return 0.0
+        return -LAPSE_RATE * (farm - cell)
+    }
+
+    /** Seasonal-forecast months from this month through the next 11; a stale saved copy drops out. */
+    private fun upcomingSeasonal(site: FarmSiteData?): List<SeasonalMonth> {
+        val now = YearMonth.now()
+        return site?.seasonal.orEmpty().filter { YearMonth.of(it.year, it.month) in now..now.plusMonths(11) }
+    }
+
+    /**
+     * Forecast rain divided by ECMWF's own average for that month, applied to NASA's
+     * normal: using the ratio, not the raw forecast, cancels the model's local bias.
+     */
+    internal fun seasonalRainRatio(month: SeasonalMonth): Double {
+        val average = month.rainfallMm - month.rainfallAnomalyMm
+        // ponytail: dry-season months averaging under 20 mm give unstable ratios; keep the normal.
+        if (average < 20.0) return 1.0
+        return (month.rainfallMm / average).coerceIn(0.25, 3.0)
+    }
+
+    private fun climateSource(climate: ClimateNormals, range: EcocropRange, plantingMonth: Int): String =
+        if (seasonMonths(range, plantingMonth).any { it in climate.forecastMonths }) {
+            "${FarmSiteDataRepository.NASA_POWER} + ${FarmSiteDataRepository.ECMWF_SEASONAL}"
+        } else {
+            FarmSiteDataRepository.NASA_POWER
+        }
 
     /** ECOCROP trapezoid: 0 outside [min, max], 100 inside [optMin, optMax], linear between. */
     internal fun trapezoid(value: Double, limits: List<Double>): Int {
@@ -413,7 +477,7 @@ object FarmSuitabilityEngine {
                 // The 16-day forecast replaces the normal for the planting month.
                 val monthly = climate.temperatureC.toMutableList()
                 if (outlook != null) monthly[plantingMonth - 1] = outlook.meanTemperatureC
-                season(monthly, plantingMonth, range.seasonHalfMonths) to FarmSiteDataRepository.NASA_POWER
+                season(monthly, plantingMonth, range.seasonHalfMonths) to climateSource(climate, range, plantingMonth)
             }
             outlook != null -> listOf(outlook.meanTemperatureC) to FarmSiteDataRepository.OPEN_METEO_FORECAST
             soil != null && soil.temperature != 0.0 -> listOf(soil.temperature) to SOURCE_AIR_SENSOR
@@ -467,7 +531,7 @@ object FarmSuitabilityEngine {
             detail = "%.0f–%.0f mm/month expected (best %.0f–%.0f)$hint".format(
                 rain.min(), rain.max(), range.monthlyRainfall[1], range.monthlyRainfall[2]
             ),
-            source = FarmSiteDataRepository.NASA_POWER
+            source = climateSource(climate, range, plantingMonth)
         )
     }
 
@@ -536,6 +600,47 @@ object FarmSuitabilityEngine {
         )
     }
 
+    /** Heaviest forecast day at or above [HEAVY_RAIN_MM], with the date it is safe to plant from. */
+    private data class HeavyRain(val date: LocalDate, val rainMm: Double, val plantFrom: LocalDate)
+
+    private fun heavyRain(outlook: WeatherOutlook?): HeavyRain? {
+        outlook ?: return null
+        val days = outlook.dailyDates.indices.filter { outlook.dailyRainMm[it] >= HEAVY_RAIN_MM }
+        if (days.isEmpty()) return null
+        val heaviest = days.maxBy { outlook.dailyRainMm[it] }
+        return HeavyRain(
+            date = LocalDate.parse(outlook.dailyDates[heaviest]),
+            rainMm = outlook.dailyRainMm[heaviest],
+            plantFrom = LocalDate.parse(outlook.dailyDates[days.last()]).plusDays(1)
+        )
+    }
+
+    private val DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
+
+    private fun rainCategory(mm: Double) = if (mm >= INTENSE_RAIN_MM) "heavy to intense" else "moderate to heavy"
+
+    /**
+     * Heavy rain in the next 16 days drowns or washes out newly planted crops that need
+     * well-drained soil. Only scored for planting now; other months have no forecast.
+     */
+    private fun plantingRainFactor(crop: FarmCrop, outlook: WeatherOutlook?): FactorScore? {
+        val rain = heavyRain(outlook) ?: return null
+        val tolerant = crop.name in FLOOD_TOLERANT
+        val loss = when {
+            tolerant -> 0
+            rain.rainMm >= INTENSE_RAIN_MM -> INTENSE_RAIN_LOSS_PCT
+            else -> HEAVY_RAIN_LOSS_PCT
+        }
+        val forecast = "%.0f mm forecast on %s (PAGASA: %s)".format(rain.rainMm, rain.date.format(DAY), rainCategory(rain.rainMm))
+        return FactorScore(
+            name = PLANTING_RAIN,
+            score = 100 - loss,
+            detail = if (tolerant) "$forecast; tolerates waterlogging"
+            else "$forecast can drown or wash out seedlings – plant from ${rain.plantFrom.format(DAY)} or use raised beds",
+            source = FarmSiteDataRepository.OPEN_METEO_FORECAST
+        )
+    }
+
     private fun risks(
         crop: FarmCrop,
         range: EcocropRange,
@@ -545,10 +650,12 @@ object FarmSuitabilityEngine {
         previous: FarmCrop?
     ): List<String> = buildList {
         val months = seasonMonths(range, plantingMonth)
-        // PAGASA: most tropical cyclones cross Luzon and the Visayas from July to November;
-        // Mindanao south of about 9.5° N is rarely hit.
-        if (crop.tall && latitude != null && latitude >= 9.5 && months.any { it in 7..11 }) {
-            add("Typhoon season (Jul–Nov) overlaps the crop. Stake or trellis firmly, or plant after November.")
+        // PAGASA: most tropical cyclones cross Luzon and the Visayas from July to November, and
+        // its wind signals warn that crops suffer most in the flowering and ripening stages, the
+        // second half of the season. Mindanao south of about 9.5° N is rarely hit.
+        val floweringToHarvest = months.drop(months.size / 2)
+        if (crop.tall && latitude != null && latitude >= 9.5 && floweringToHarvest.any { it in 7..11 }) {
+            add("Typhoon season (Jul–Nov) falls on flowering and ripening, when wind damage is heaviest. Stake or trellis firmly, or plant so the crop flowers outside July–November.")
         }
         val advice = WET_SEASON_DISEASE[crop.family]
         if (climate != null && advice != null && wetAndWarm(range, plantingMonth, climate)) {
@@ -627,7 +734,6 @@ object FarmSuitabilityEngine {
     private fun warnings(
         probe: SensorReading?,
         site: FarmSiteData?,
-        climate: ClimateNormals?,
         recentRainMm: Double?
     ): List<String> = buildList {
         val mappedPh = site?.soil?.ph
@@ -637,19 +743,44 @@ object FarmSuitabilityEngine {
         ece(probe)?.takeIf { it >= 4.0 }?.let {
             add("Soil EC suggests saline soil (ECe ≈ %.1f dS/m). Confirm with a laboratory ECe test and leach with good-quality water.".format(it))
         }
-        val normals = site?.normals
-        if (normals != null && climate != null && climate.temperatureC != normals.temperatureC) {
-            val shift = climate.temperatureC[0] - normals.temperatureC[0]
+        if (site?.normals != null) {
+            val shift = elevationShift(site)
             if (abs(shift) >= 1.0) {
                 add("Climate normals were adjusted by %+.1f °C for the farm's elevation.".format(shift))
             }
         }
+        val upcoming = upcomingSeasonal(site)
+        fun describe(months: List<SeasonalMonth>) = months.joinToString { month ->
+            "%s %+.0f%%".format(Month.of(month.month).getDisplayName(TextStyle.SHORT, Locale.US), (seasonalRainRatio(month) - 1) * 100)
+        }
+        upcoming.filter { seasonalRainRatio(it) <= 0.75 }.takeIf { it.isNotEmpty() }?.let {
+            add("ECMWF seasonal forecast: drier than normal (${describe(it)} rain). Plan irrigation, or favour crops that need less water.")
+        }
+        upcoming.filter { seasonalRainRatio(it) >= 1.25 }.takeIf { it.isNotEmpty() }?.let {
+            add("ECMWF seasonal forecast: wetter than normal (${describe(it)} rain). Favour crops that tolerate waterlogging (rice, kangkong, sitaw) and use raised beds for the rest.")
+        }
+        upcoming.maxOfOrNull { it.temperatureAnomalyC }?.takeIf { it >= 1.0 }?.let {
+            add("ECMWF seasonal forecast: up to %+.1f °C warmer than normal in the coming months.".format(it))
+        }
         site?.outlook?.let { outlook ->
+            val rain = heavyRain(outlook)
             when {
-                outlook.rainfallMm > 150.0 ->
-                    add("Heavy rain forecast: %.0f mm in the next %d days. Prepare drainage and delay transplanting.".format(outlook.rainfallMm, outlook.days))
+                rain != null -> add(
+                    "%s rain forecast: %.0f mm on %s. Crops that need well-drained soil: plant from %s or on raised beds, and clear drainage canals.".format(
+                        rainCategory(rain.rainMm).replaceFirstChar { it.uppercase() }, rain.rainMm,
+                        rain.date.format(DAY), rain.plantFrom.format(DAY)
+                    )
+                )
                 outlook.rainfallMm < 10.0 ->
                     add("Little rain forecast: %.0f mm in the next %d days. Irrigate after planting.".format(outlook.rainfallMm, outlook.days))
+            }
+            val gustDay = outlook.dailyGustKmh.indices.maxByOrNull { outlook.dailyGustKmh[it] }
+            if (gustDay != null && outlook.dailyGustKmh[gustDay] >= GALE_GUST_KMH) {
+                add(
+                    "Gale-force gusts up to %.0f km/h forecast on %s (PAGASA Wind Signal No. 2 level). Stake tall crops, delay transplanting, and harvest mature rice and corn early if you can.".format(
+                        outlook.dailyGustKmh[gustDay], LocalDate.parse(outlook.dailyDates[gustDay]).format(DAY)
+                    )
+                )
             }
             if (outlook.meanHumidityPct > 85.0) {
                 add("High humidity ahead (%.0f%%). Watch tomato, eggplant, potato and cucumber for fungal disease.".format(outlook.meanHumidityPct))
