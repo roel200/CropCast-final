@@ -115,7 +115,7 @@ class FarmRealWorldValidationTest {
         val report = StringBuilder("\nHarvest-season agreement (production-weighted correlation, engine vs PSA quarters):\n")
         val agreement = mutableMapOf<Pair<String, Boolean>, Double>()
         for (irrigated in listOf(false, true)) for (crop in FarmSuitabilityEngine.ECOCROP.keys) {
-            val days = SeedRecommendationEngine.crops.first { it.name == crop }.days
+            val days = FarmSuitabilityEngine.CROPS.first { it.name == crop }.profile.growDays
             var weighted = 0.0
             var weights = 0.0
             for ((json, site) in provinces) {
@@ -141,7 +141,7 @@ class FarmRealWorldValidationTest {
         // Each crop under the water regime Filipino farmers mostly use for it: rain-fed wet-season
         // grains and highland potato; irrigated dry-season vegetables.
         val rainfed = listOf("Rice", "Corn", "Potato")
-        val irrigated = listOf("Tomato", "Okra", "Eggplant", "Lettuce")
+        val irrigated = listOf("Tomato", "Okra", "Eggplant", "Lettuce", "Ampalaya", "Pechay")
         for (crop in rainfed) assertTrue("$crop rain-fed season", agreement.getValue(crop to false) > 0.0)
         for (crop in irrigated) assertTrue("$crop irrigated season", agreement.getValue(crop to true) > 0.0)
     }
@@ -177,7 +177,7 @@ class FarmRealWorldValidationTest {
             val suitable = group.count { it.first.second >= 50 }
             val low = group.filter { it.first.second < 50 }
                 .joinToString { "${it.second.getString("province")} pH ${it.second.getDouble("labPh")} → ${it.first.second}" }
-            report.append("  %-6s %2d/%2d rated suitable, median rank %d of 12%s\n".format(
+            report.append("  %-6s %2d/%2d rated suitable, median rank %d of 17%s\n".format(
                 crop, suitable, group.size, group.map { it.first.third }.sorted()[group.size / 2],
                 if (low.isNotEmpty()) "; low: $low" else ""
             ))

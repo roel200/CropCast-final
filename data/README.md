@@ -14,6 +14,17 @@ these files. `processed/` contains reproducible outputs created by
   including Basella alba (displayed as Alugbati), from the downloaded
   crop-requirements file.
 
+## Other data
+
+- `raw/ecocrop/ecocrop.rds`: FAO ECOCROP crop parameters, via the Recocrop R package
+  (CC BY 4.0). The 17 crops the app ranks are exported to
+  `processed/ecocrop_selected.csv` by `scripts/train_local_crop_model.py`.
+- `raw/wosis/`: ISRIC WoSIS topsoil pH for the Philippines, used to train the local model.
+- `validation/`: ground truth and site data for the engine's validation tests; see
+  `validation/README.md`.
+- `app/src/main/assets/crop_economics.json` (in the app): PSA national yields and
+  farmgate prices, built by `scripts/build_crop_economics.py`.
+
 ## Scientific limitations
 
 - The crop-requirements source does not state the NPK unit. Its numeric ranges

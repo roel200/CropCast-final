@@ -1,0 +1,89 @@
+{
+ "source": "PSA OpenSTAT: production and area harvested 2021-2025 (0082E4EVCP3, 0112E4EAHM3, 0012E4EVCP0, 0022E4EAHC0); national farmgate prices 2024-2025 (2M/NFG tables)",
+ "note": "National averages; gross income excludes production costs.",
+ "crops": {
+  "Tomato": {
+   "yieldTonnesPerHa": 14.34,
+   "farmgatePricePhpPerKg": 47.27,
+   "grossPhpPerHa": 677900.0
+  },
+  "Okra": {
+   "yieldTonnesPerHa": 7.48,
+   "farmgatePricePhpPerKg": 37.86,
+   "grossPhpPerHa": 283200.0
+  },
+  "Alugbati": {
+   "yieldTonnesPerHa": 11.98,
+   "farmgatePricePhpPerKg": 31.96,
+   "grossPhpPerHa": 382900.0
+  },
+  "Potato": {
+   "yieldTonnesPerHa": 16.05,
+   "farmgatePricePhpPerKg": 48.78,
+   "grossPhpPerHa": 782900.0
+  },
+  "Rice": {
+   "yieldTonnesPerHa": 4.14,
+   "farmgatePricePhpPerKg": 20.59,
+   "grossPhpPerHa": 85200.0
+  },
+  "Corn": {
+   "yieldTonnesPerHa": 3.31,
+   "farmgatePricePhpPerKg": 15.15,
+   "grossPhpPerHa": 50100.0
+  },
+  "Eggplant": {
+   "yieldTonnesPerHa": 11.18,
+   "farmgatePricePhpPerKg": 45.28,
+   "grossPhpPerHa": 506200.0
+  },
+  "Cucumber": {
+   "yieldTonnesPerHa": 7.17,
+   "farmgatePricePhpPerKg": 42.62,
+   "grossPhpPerHa": 305600.0
+  },
+  "Cabbage": {
+   "yieldTonnesPerHa": 15.79,
+   "farmgatePricePhpPerKg": 31.01,
+   "grossPhpPerHa": 489600.0
+  },
+  "Sweet Potato": {
+   "yieldTonnesPerHa": 6.21,
+   "farmgatePricePhpPerKg": 29.79,
+   "grossPhpPerHa": 185000.0
+  },
+  "Lettuce": {
+   "yieldTonnesPerHa": 7.74,
+   "farmgatePricePhpPerKg": 122.56,
+   "grossPhpPerHa": 948600.0
+  },
+  "Spinach": {
+   "yieldTonnesPerHa": 2.22
+  },
+  "Pechay": {
+   "yieldTonnesPerHa": 6.09,
+   "farmgatePricePhpPerKg": 47.91,
+   "grossPhpPerHa": 291800.0
+  },
+  "Kangkong": {
+   "yieldTonnesPerHa": 11.01,
+   "farmgatePricePhpPerKg": 35.09,
+   "grossPhpPerHa": 386300.0
+  },
+  "Ampalaya": {
+   "yieldTonnesPerHa": 8.49,
+   "farmgatePricePhpPerKg": 55.67,
+   "grossPhpPerHa": 472600.0
+  },
+  "Sitaw": {
+   "yieldTonnesPerHa": 7.91,
+   "farmgatePricePhpPerKg": 46.36,
+   "grossPhpPerHa": 366700.0
+  },
+  "Kalabasa": {
+   "yieldTonnesPerHa": 14.57,
+   "farmgatePricePhpPerKg": 25.2,
+   "grossPhpPerHa": 367200.0
+  }
+ }
+}

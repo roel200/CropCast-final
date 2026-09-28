@@ -2,6 +2,7 @@ package com.cropcast.app.data
 
 import com.cropcast.app.data.model.MonthlyCropRecommendation
 import com.cropcast.app.data.model.CropOutcomeFeedback
+import com.cropcast.app.data.model.FieldSample
 import com.cropcast.app.data.model.MonthlySensorSummary
 import com.cropcast.app.data.model.SeedRecommendation
 import com.cropcast.app.data.model.SensorReading
@@ -465,7 +466,8 @@ object SeedRecommendationEngine {
             phosphorus = average { it.phosphorus },
             potassium = average { it.potassium },
             lightIntensity = average { it.lightIntensity },
-            timestamp = valid.maxOf { it.first.timestamp }
+            timestamp = valid.maxOf { it.first.timestamp },
+            electricalConductivity = average { it.electricalConductivity }
         )
     }
 
@@ -483,6 +485,18 @@ object SeedRecommendationEngine {
 }
 
 object MonthlySensorAggregator {
+    /** Averages probe readings taken at different spots into one field sample. */
+    fun fieldSample(spots: List<SensorReading>, takenAt: Long): FieldSample? {
+        val summary = summarize("", spots)
+        if (!summary.hasData) return null
+        return FieldSample(
+            average = summary.average.copy(timestamp = takenAt),
+            spots = summary.sampleCount,
+            phSpread = summary.maximum.soilPh - summary.minimum.soilPh,
+            takenAt = takenAt
+        )
+    }
+
     fun summarize(monthKey: String, readings: List<SensorReading>): MonthlySensorSummary {
         val valid = readings.filter { it.isValidForRecommendation() }
         if (valid.isEmpty()) return MonthlySensorSummary(monthKey = monthKey)
@@ -509,7 +523,8 @@ object MonthlySensorAggregator {
                 phosphorus = average { it.phosphorus },
                 potassium = average { it.potassium },
                 lightIntensity = average { it.lightIntensity },
-                timestamp = valid.maxOf { it.timestamp }
+                timestamp = valid.maxOf { it.timestamp },
+                electricalConductivity = average { it.electricalConductivity }
             ),
             minimum = SensorReading(
                 temperature = minimum { it.temperature },
@@ -520,7 +535,8 @@ object MonthlySensorAggregator {
                 phosphorus = minimum { it.phosphorus },
                 potassium = minimum { it.potassium },
                 lightIntensity = minimum { it.lightIntensity },
-                timestamp = valid.minOf { it.timestamp }
+                timestamp = valid.minOf { it.timestamp },
+                electricalConductivity = minimum { it.electricalConductivity }
             ),
             maximum = SensorReading(
                 temperature = maximum { it.temperature },
@@ -531,7 +547,8 @@ object MonthlySensorAggregator {
                 phosphorus = maximum { it.phosphorus },
                 potassium = maximum { it.potassium },
                 lightIntensity = maximum { it.lightIntensity },
-                timestamp = valid.maxOf { it.timestamp }
+                timestamp = valid.maxOf { it.timestamp },
+                electricalConductivity = maximum { it.electricalConductivity }
             ),
             standardDeviation = SensorReading(
                 temperature = standardDeviation { it.temperature },
@@ -541,7 +558,8 @@ object MonthlySensorAggregator {
                 nitrogen = standardDeviation { it.nitrogen },
                 phosphorus = standardDeviation { it.phosphorus },
                 potassium = standardDeviation { it.potassium },
-                lightIntensity = standardDeviation { it.lightIntensity }
+                lightIntensity = standardDeviation { it.lightIntensity },
+                electricalConductivity = standardDeviation { it.electricalConductivity }
             )
         )
     }

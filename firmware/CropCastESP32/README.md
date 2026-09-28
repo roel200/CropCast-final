@@ -26,7 +26,7 @@ The probe answers as Modbus slave `1` at 4800 baud. One request reads holding re
 | `0x0007` | salinity | raw |
 | `0x0008` | TDS | raw |
 
-The app's `temperature` and `humidity` still come from the DHT11 (air). Soil temperature, EC, salinity and TDS go to the SD card only, because the Firebase reading record has a fixed nine-field contract (see below).
+The app's `temperature` and `humidity` still come from the DHT11 (air). EC is also sent to Firebase for the app's salinity check. Soil temperature, salinity and TDS go to the SD card only (see the data contract below).
 
 ## Arduino libraries
 
@@ -112,7 +112,7 @@ Nothing is lost by waiting. The gate is re-checked every 15 s, so a probe that c
 
 ## Data contract
 
-Every reading record carries **exactly** these nine fields, and `timestamp` is Unix milliseconds UTC:
+Every reading record carries these nine required fields, and `timestamp` is Unix milliseconds UTC:
 
 ```
 temperature humidity soilMoisture soilPh nitrogen phosphorus potassium lightIntensity timestamp
@@ -124,7 +124,7 @@ Three gates a reading must survive:
 - **App** — `isValidForRecommendation()` repeats those ranges and adds `timestamp > 0`. A reading that fails is dropped, and the dashboard then renders zeros.
 - **Scoring** — seven fields are scored. `lightIntensity` is deliberately excluded until lux thresholds are validated, so it is the one field where a placeholder is harmless.
 
-Do not add a tenth field to a reading record. The rules would accept it, but the Android app logs an unknown-property warning on every snapshot and ignores the value. Diagnostics belong under `/status`, which the app reads with explicit lookups and which is safe to extend. The firmware only ever **reads** `/settings`; it must never write there.
+It also carries one optional field, `electricalConductivity`: the probe's soil EC in µS/cm, or `0` when the probe is untrusted. The app uses it for its salinity check and treats `0` as "not measured", so readings from older firmware still work. Do not add any other field to a reading record. The rules would accept it, but the Android app logs an unknown-property warning on every snapshot and ignores the value. Diagnostics belong under `/status`, which the app reads with explicit lookups and which is safe to extend. The firmware only ever **reads** `/settings`; it must never write there.
 
 ### Status payload
 

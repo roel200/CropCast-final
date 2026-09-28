@@ -52,7 +52,7 @@ class FarmSuitabilityEngineTest {
             // Split on commas outside quotes; ECOCROP names such as "Okra, lady fingers" are quoted.
             line.split(Regex(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"))
         }
-        assertEquals(12, rows.size)
+        assertEquals(FarmSuitabilityEngine.ECOCROP.size, rows.size)
         for (row in rows) {
             val range = FarmSuitabilityEngine.ECOCROP.getValue(row[0])
             val numbers = row.subList(3, 15).map(String::toDouble)
@@ -115,7 +115,7 @@ class FarmSuitabilityEngineTest {
         val scores = result.ranked.associate { it.crop.name to it.score }
         assertTrue(scores.getValue("Rice") > scores.getValue("Lettuce"))
         assertEquals(0, scores.getValue("Spinach"))  // 28 °C is past spinach's absolute maximum
-        assertEquals(12, result.ranked.size)
+        assertEquals(FarmSuitabilityEngine.CROPS.size, result.ranked.size)
     }
 
     @Test
@@ -178,7 +178,7 @@ class FarmSuitabilityEngineTest {
     fun worksOfflineFromTheProbeAlone() {
         val result = FarmSuitabilityEngine.recommend(probe, site = null, plantingMonth = 10)
 
-        assertEquals(12, result.ranked.size)
+        assertEquals(FarmSuitabilityEngine.CROPS.size, result.ranked.size)
         assertTrue(FarmSuitabilityEngine.SOURCE_PROBE in result.sources)
         assertTrue(FarmSuitabilityEngine.SOURCE_AIR_SENSOR in result.sources)
         assertTrue(result.warnings.any { it.contains("latitude") })

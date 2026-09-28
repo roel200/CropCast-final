@@ -2,6 +2,7 @@ package com.cropcast.app.data
 
 import com.cropcast.app.data.model.SeedRecommendation
 import com.cropcast.app.data.model.SensorReading
+import org.json.JSONObject
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.min
@@ -15,13 +16,42 @@ data class FactorScore(
     val source: String
 )
 
+/** FAO land suitability classes (FAO Framework for Land Evaluation). */
+enum class SuitabilityClass(val code: String, val label: String) {
+    S1("S1", "Highly suitable"),
+    S2("S2", "Moderately suitable"),
+    S3("S3", "Marginally suitable"),
+    N("N", "Not suitable");
+
+    companion object {
+        fun of(score: Int): SuitabilityClass = when {
+            score >= 80 -> S1
+            score >= 60 -> S2
+            score >= 40 -> S3
+            else -> N
+        }
+    }
+}
+
+/** PSA national averages; see scripts/build_crop_economics.py. */
+data class CropEconomics(
+    val yieldTonnesPerHa: Double? = null,
+    val farmgatePricePhpPerKg: Double? = null,
+    val grossPhpPerHa: Double? = null
+)
+
 data class CropSuitability(
     val crop: SeedRecommendation,
     val score: Int,
     val factors: List<FactorScore>,
     /** Score if planted in each month, January first; empty without climate normals. */
-    val monthlyScores: List<Int> = emptyList()
+    val monthlyScores: List<Int> = emptyList(),
+    /** Season risks for the chosen planting month: typhoons, disease, rotation. Advice only. */
+    val risks: List<String> = emptyList(),
+    val economics: CropEconomics? = null
 ) {
+    val suitabilityClass: SuitabilityClass get() = SuitabilityClass.of(score)
+
     val limitingFactor: FactorScore? get() = factors.minByOrNull { it.score }
 
     /** Months (1-12) within 5 points of the best planting month. */
@@ -36,11 +66,10 @@ enum class NutrientStatus { LOW, OK, HIGH }
 
 data class NutrientAdvice(
     val nutrient: String,
-    val measured: Double,
-    val targetLow: Double,
-    val targetHigh: Double,
     val status: NutrientStatus,
-    val action: String
+    val detail: String,
+    val action: String,
+    val applyKgPerHa: Double? = null
 )
 
 data class FarmRecommendation(
@@ -50,10 +79,15 @@ data class FarmRecommendation(
     val sources: List<String>
 ) {
     val top: CropSuitability? get() = ranked.firstOrNull()
+
+    /** Highest PSA gross income among S1/S2 crops; may differ from the most suitable crop. */
+    val bestValue: CropSuitability?
+        get() = ranked.filter { it.score >= 60 && it.economics?.grossPhpPerHa != null }
+            .maxByOrNull { it.economics!!.grossPhpPerHa!! }
 }
 
 /**
- * Ranks CropCast's 12 crops for a farm by combining the soil probe with free
+ * Ranks CropCast's crops for a farm by combining the soil probe with free
  * location data. Temperature and rain follow FAO's ECOCROP model exactly as the
  * reference implementation (R package Recocrop) computes it: monthly climate is
  * interpolated to half-months, each half-month is scored on the crop's
@@ -68,7 +102,9 @@ data class FarmRecommendation(
  * departs from ECOCROP, which treats pH as absolute: validation against PSA
  * production and SoilsSync farms showed tomato thriving on Ilocos soils above
  * pH 7.5 and corn on limed Bukidnon soils below pH 4.5, both of which ECOCROP
- * zeroes. N/P/K never rank crops; fertilizer fixes them, so they and pH drive
+ * zeroes. Salinity then multiplies the score by FAO's relative yield (Maas &
+ * Hoffman), and a wet, warm season by a disease yield loss for disease-prone
+ * vegetable families. N/P/K never rank crops; fertilizer fixes them, so they and pH drive
  * the soil plan instead.
  */
 object FarmSuitabilityEngine {
@@ -113,27 +149,109 @@ object FarmSuitabilityEngine {
         "Cabbage" to EcocropRange(listOf(7.0, 15.0, 24.0, 32.0), listOf(5.0, 6.0, 7.5, 8.3), listOf(300.0, 500.0, 1000.0, 2500.0), "MO", listOf(60.0, 200.0)),
         "Sweet Potato" to EcocropRange(listOf(10.0, 18.0, 28.0, 38.0), listOf(4.0, 5.0, 7.0, 8.0), listOf(500.0, 750.0, 1250.0, 5000.0), "M", listOf(80.0, 170.0)),
         "Lettuce" to EcocropRange(listOf(5.0, 12.0, 21.0, 30.0), listOf(4.2, 6.0, 7.0, 7.5), listOf(900.0, 1100.0, 1400.0, 4100.0), "LM", listOf(35.0, 85.0)),
-        "Spinach" to EcocropRange(listOf(2.0, 13.0, 20.0, 27.0), listOf(5.3, 6.0, 7.5, 8.3), listOf(300.0, 800.0, 1200.0, 1700.0), "LM", listOf(40.0, 120.0))
+        "Spinach" to EcocropRange(listOf(2.0, 13.0, 20.0, 27.0), listOf(5.3, 6.0, 7.5, 8.3), listOf(300.0, 800.0, 1200.0, 1700.0), "LM", listOf(40.0, 120.0)),
+        "Pechay" to EcocropRange(listOf(10.0, 20.0, 25.0, 32.0), listOf(5.0, 5.5, 7.0, 7.5), listOf(300.0, 900.0, 1400.0, 2000.0), "LM", listOf(21.0, 45.0)),
+        "Kangkong" to EcocropRange(listOf(10.0, 15.0, 35.0, 40.0), listOf(4.3, 5.0, 7.0, 7.5), listOf(700.0, 2000.0, 2500.0, 4200.0), "HO", listOf(30.0, 70.0)),
+        "Ampalaya" to EcocropRange(listOf(15.0, 22.0, 30.0, 38.0), listOf(4.5, 6.0, 6.5, 8.0), listOf(1000.0, 2000.0, 2500.0, 4000.0), "MO", listOf(50.0, 70.0)),
+        "Sitaw" to EcocropRange(listOf(14.0, 20.0, 35.0, 38.0), listOf(4.3, 5.5, 7.0, 7.5), listOf(650.0, 1500.0, 2000.0, 4100.0), "MH", listOf(50.0, 150.0)),
+        "Kalabasa" to EcocropRange(listOf(10.0, 20.0, 30.0, 40.0), listOf(4.5, 5.5, 7.5, 8.3), listOf(300.0, 600.0, 1600.0, 2800.0), "MO", listOf(80.0, 140.0))
+    )
+
+    /** Maas-Hoffman salt tolerance: relative yield = 100 - slope x (ECe - threshold). */
+    internal data class SaltTolerance(val thresholdDsM: Double, val slopePctPerDsM: Double, val source: String)
+
+    // FAO Irrigation and Drainage Paper 61, Annex 1 (after Maas & Grattan). Okra and pumpkin are
+    // rated "moderately sensitive" without numbers there; they get that class's lower threshold
+    // (1.3 dS/m) and the median slope of the moderately sensitive crops below (11 %/dS/m).
+    // FAO lists no data for alugbati, kangkong or ampalaya, so they have no salinity factor.
+    internal val SALT = mapOf(
+        "Tomato" to SaltTolerance(2.5, 9.9, "FAO"),
+        "Cabbage" to SaltTolerance(1.8, 9.7, "FAO"),
+        "Corn" to SaltTolerance(1.7, 12.0, "FAO"),
+        "Potato" to SaltTolerance(1.7, 12.0, "FAO"),
+        "Rice" to SaltTolerance(3.0, 12.0, "FAO"),
+        "Lettuce" to SaltTolerance(1.3, 13.0, "FAO"),
+        "Cucumber" to SaltTolerance(2.5, 13.0, "FAO"),
+        "Spinach" to SaltTolerance(2.0, 7.6, "FAO"),
+        "Sweet Potato" to SaltTolerance(1.5, 11.0, "FAO"),
+        "Eggplant" to SaltTolerance(1.1, 6.9, "FAO"),
+        "Sitaw" to SaltTolerance(4.9, 12.0, "FAO (cowpea)"),
+        "Pechay" to SaltTolerance(3.3, 4.3, "FAO (turnip greens, B. rapa)"),
+        "Okra" to SaltTolerance(1.3, 11.0, "FAO class MS"),
+        "Kalabasa" to SaltTolerance(1.3, 11.0, "FAO class MS")
+    )
+
+    /**
+     * Crop metadata. [needKgHa] is the crop's N, P2O5 and K2O need in kg/ha: the
+     * crop-requirement table (data/processed/crop_requirements_selected.json) lists
+     * values such as corn 150-200 N, which are per-hectare rates, not soil levels.
+     */
+    internal data class FarmCrop(
+        val profile: SeedRecommendation,
+        val family: String,
+        val tall: Boolean,
+        val needKgHa: List<ClosedFloatingPointRange<Double>>?
+    ) {
+        val name: String get() = profile.name
+    }
+
+    private val FAMILY = mapOf(
+        "Tomato" to "Solanaceae", "Potato" to "Solanaceae", "Eggplant" to "Solanaceae",
+        "Okra" to "Malvaceae", "Alugbati" to "Basellaceae", "Rice" to "Poaceae", "Corn" to "Poaceae",
+        "Cucumber" to "Cucurbitaceae", "Ampalaya" to "Cucurbitaceae", "Kalabasa" to "Cucurbitaceae",
+        "Cabbage" to "Brassicaceae", "Pechay" to "Brassicaceae", "Sweet Potato" to "Convolvulaceae",
+        "Kangkong" to "Convolvulaceae", "Lettuce" to "Asteraceae", "Spinach" to "Amaranthaceae", "Sitaw" to "Fabaceae"
+    )
+
+    /** Bacterial wilt and fusarium (Solanaceae, Cucurbitaceae), clubroot and black rot (Brassicaceae). */
+    private val ROTATION_FAMILIES = setOf("Solanaceae", "Cucurbitaceae", "Brassicaceae")
+
+    /** Staked, trellised or tall crops that typhoon winds flatten. */
+    private val TALL = setOf("Tomato", "Okra", "Rice", "Corn", "Eggplant", "Cucumber", "Ampalaya", "Sitaw")
+
+    internal val CROPS: List<FarmCrop> = SeedRecommendationEngine.crops.map { p ->
+        FarmCrop(
+            SeedRecommendation(p.name, p.variety, p.icon, p.days, p.soil),
+            FAMILY.getValue(p.name), p.name in TALL, listOf(p.nitrogen, p.phosphorus, p.potassium)
+        )
+    } + listOf(
+        // Pechay uses the table's turnip rates (same species, Brassica rapa); kalabasa uses pumpkin's.
+        FarmCrop(SeedRecommendation("Pechay", "Native", "🥬", 30, "Fertile loam"), "Brassicaceae", false,
+            listOf(80.0..120.0, 40.0..80.0, 60.0..120.0)),
+        FarmCrop(SeedRecommendation("Kangkong", "Upland", "🌿", 30, "Moist loam to clay"), "Convolvulaceae", false, null),
+        FarmCrop(SeedRecommendation("Ampalaya", "Hybrid", "🥒", 60, "Well-drained loam"), "Cucurbitaceae", true, null),
+        FarmCrop(SeedRecommendation("Sitaw", "Pole", "🫛", 60, "Well-drained loam"), "Fabaceae", true, null),
+        FarmCrop(SeedRecommendation("Kalabasa", "Native", "🎃", 90, "Well-drained loam"), "Cucurbitaceae", false,
+            listOf(80.0..120.0, 60.0..100.0, 100.0..150.0))
     )
 
     const val SOURCE_PROBE = "7-in-1 soil probe"
     const val SOURCE_AIR_SENSOR = "DHT11 air sensor"
     const val SOURCE_ECOCROP = "FAO ECOCROP crop ranges"
     const val SOURCE_RECENT_RAIN = "Open-Meteo rainfall history"
+    const val SOURCE_PSA = "PSA yields and farmgate prices"
 
     /** Standard environmental lapse rate, °C per metre of height. */
     internal const val LAPSE_RATE = 0.0065
 
-    // ponytail: table N/P/K ranges have no stated unit; set this from a lab soil
-    // test (lab value / probe value) instead of trusting the probe's mg/kg as-is.
-    const val NPK_TABLE_SCALE = 1.0
+    // ponytail: the probe reports bulk soil EC; FAO salt data use ECe (saturated paste).
+    // The ratio depends on soil water and texture, so set it from one lab ECe test.
+    const val PROBE_EC_TO_ECE = 1.0
+
+    // ponytail: general soil-test interpretation levels in mg/kg (available N from the
+    // 280/560 kg/ha classes; Olsen/Bray P; exchangeable K at 0.2/0.4 cmol/kg). The
+    // probe's NPK is an estimate, so confirm its class once against a BSWM lab test.
+    internal val SOIL_TEST_LEVELS = listOf(125.0 to 250.0, 10.0 to 25.0, 78.0 to 156.0)
 
     fun recommend(
         soil: SensorReading?,
         site: FarmSiteData?,
         plantingMonth: Int,
         recentRainMm: Double? = null,
-        irrigated: Boolean = false
+        irrigated: Boolean = false,
+        latitude: Double? = null,
+        previousCrop: String? = null,
+        economics: Map<String, CropEconomics> = emptyMap()
     ): FarmRecommendation {
         val probe = soil?.takeIf { it.soilPh > 0.0 }
         val sources = linkedSetOf(SOURCE_ECOCROP)
@@ -142,30 +260,36 @@ object FarmSuitabilityEngine {
             sources += if (status == SourceStatus.CACHED) "$name (saved copy)" else name
         }
         if (recentRainMm != null) sources += SOURCE_RECENT_RAIN
+        if (economics.isNotEmpty()) sources += SOURCE_PSA
         val climate = siteClimate(site)
+        val previous = previousCrop?.let { name -> CROPS.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) } }
 
-        val ranked = SeedRecommendationEngine.crops.map { profile ->
-            val range = ECOCROP.getValue(profile.name)
-            val factors = factors(range, plantingMonth, climate, site?.outlook, soil, probe, site?.soil, irrigated)
+        val ranked = CROPS.map { crop ->
+            val range = ECOCROP.getValue(crop.name)
+            val factors = factors(crop, range, plantingMonth, climate, site?.outlook, soil, probe, site?.soil, irrigated)
             factors.firstOrNull { it.source == SOURCE_AIR_SENSOR }?.let { sources += SOURCE_AIR_SENSOR }
             val score = combine(factors)
             CropSuitability(
-                crop = SeedRecommendation(profile.name, profile.variety, profile.icon, profile.days, profile.soil, score),
+                crop = crop.profile.copy(confidence = score),
                 score = score,
                 factors = factors,
                 monthlyScores = if (climate == null) emptyList() else (1..12).map { month ->
                     if (month == plantingMonth) score
-                    else combine(factors(range, month, climate, outlook = null, soil, probe, site?.soil, irrigated))
-                }
+                    else combine(factors(crop, range, month, climate, outlook = null, soil, probe, site?.soil, irrigated))
+                },
+                risks = risks(crop, range, plantingMonth, climate, latitude, previous),
+                economics = economics[crop.name]
             )
         }
             .filter { it.factors.isNotEmpty() }
-            .sortedByDescending { it.score }  // stable: ties keep the existing profile order
+            .sortedByDescending { it.score }  // stable: ties keep the catalog order
 
+        val topCrop = ranked.firstOrNull()?.let { top -> CROPS.first { it.name == top.crop.name } }
         return FarmRecommendation(
             ranked = ranked,
-            nutrientPlan = ranked.firstOrNull()?.let { nutrientPlan(it.crop.name, probe) }.orEmpty(),
-            warnings = warnings(probe, site, climate, recentRainMm),
+            nutrientPlan = topCrop?.let { nutrientPlan(it, probe) }.orEmpty(),
+            warnings = warnings(probe, site, climate, recentRainMm) +
+                ranked.firstOrNull()?.risks.orEmpty().map { "${ranked.first().crop.name}: $it" },
             sources = sources.toList()
         )
     }
@@ -178,25 +302,44 @@ object FarmSuitabilityEngine {
         irrigated: Boolean = false
     ): List<Int> {
         val climate = siteClimate(site) ?: return emptyList()
+        val crop = CROPS.first { it.name == cropName }
         val range = ECOCROP.getValue(cropName)
         val probe = soil?.takeIf { it.soilPh > 0.0 }
-        return (1..12).map { month -> combine(factors(range, month, climate, null, soil, probe, site.soil, irrigated)) }
+        return (1..12).map { month -> combine(factors(crop, range, month, climate, null, soil, probe, site.soil, irrigated)) }
     }
 
-    /** Temperature caps the score; manageable factors scale it between 60 % and 100 %. */
+    /** Temperature caps the score; manageable factors scale it to 60-100 %; salinity and disease scale by relative yield. */
     private fun combine(factors: List<FactorScore>): Int {
         if (factors.isEmpty()) return 0
-        val cap = factors.firstOrNull { it.name == "Temperature" }?.score ?: factors.minOf { it.score }
-        val manageable = factors.filter { it.name in MANAGEABLE_WEIGHTS }
+        val relativeYield = factors.filter { it.name in YIELD_LOSSES }.fold(1.0) { yield, it -> yield * it.score / 100.0 }
+        val rest = factors.filter { it.name !in YIELD_LOSSES }.ifEmpty { return (100 * relativeYield).roundToInt() }
+        val cap = rest.firstOrNull { it.name == "Temperature" }?.score ?: rest.minOf { it.score }
+        val manageable = rest.filter { it.name in MANAGEABLE_WEIGHTS }
         val weight = manageable.sumOf { MANAGEABLE_WEIGHTS.getValue(it.name) }
         val quality = if (manageable.isEmpty()) 100.0
         else manageable.sumOf { it.score * MANAGEABLE_WEIGHTS.getValue(it.name) } / weight
-        return (cap * (0.6 + 0.4 * quality / 100.0)).roundToInt()
+        return (cap * (0.6 + 0.4 * quality / 100.0) * relativeYield).roundToInt()
     }
 
+    private const val SALINITY = "Soil salinity"
+    private const val DISEASE = "Wet-season disease"
+    private val YIELD_LOSSES = setOf(SALINITY, DISEASE)
+
+    /** Families whose wet-season diseases shape Philippine planting calendars, with the advice shown. */
+    internal val WET_SEASON_DISEASE = mapOf(
+        "Solanaceae" to "high risk of bacterial wilt and late blight. Use raised beds and resistant varieties.",
+        "Cucurbitaceae" to "high risk of downy mildew. Trellis for airflow and avoid overhead watering.",
+        "Brassicaceae" to "high risk of black rot and soft rot. Ensure drainage and rotate fields."
+    )
+
+    // ponytail: flat yield loss for a wet, warm season. Calibrated on the PSA harvest-quarter
+    // test (15 % and 30 % agree equally; the gentler one is kept). Replace with per-crop losses
+    // if wet-season yield data (e.g. PSA quarterly yields) become available.
+    internal const val WET_SEASON_LOSS_PCT = 15
     private val MANAGEABLE_WEIGHTS = mapOf("Soil pH" to 0.5, "Season rainfall" to 0.3, "Soil texture" to 0.2)
 
     private fun factors(
+        crop: FarmCrop,
         range: EcocropRange,
         plantingMonth: Int,
         climate: ClimateNormals?,
@@ -209,7 +352,9 @@ object FarmSuitabilityEngine {
         temperatureFactor(range, plantingMonth, climate, outlook, soil),
         phFactor(range, probe, map),
         rainfallFactor(range, plantingMonth, climate, irrigated),
-        textureFactor(range, map)
+        textureFactor(range, map),
+        salinityFactor(crop, probe),
+        diseaseFactor(crop, range, plantingMonth, climate)
     )
 
     /**
@@ -251,6 +396,10 @@ object FarmSuitabilityEngine {
         val values = halfMonths(monthly)
         return (0 until halfMonths).map { values[(2 * (plantingMonth - 1) + it) % 24] }
     }
+
+    /** Calendar months (1-12) the growing season touches. */
+    private fun seasonMonths(range: EcocropRange, plantingMonth: Int): List<Int> =
+        (0 until ceil(range.seasonHalfMonths / 2.0).toInt()).map { (plantingMonth - 1 + it) % 12 + 1 }
 
     private fun temperatureFactor(
         range: EcocropRange,
@@ -334,8 +483,8 @@ object FarmSuitabilityEngine {
         val sand = map.sandPct ?: return null
         val texture = textureClass(clay, sand)
         val name = when (texture) { 'H' -> "heavy (clay)"; 'L' -> "light (sandy)"; else -> "medium (loam)" }
-        // Every one of the 12 crops tolerates a wide texture range in ECOCROP,
-        // so a non-optimal texture lowers the score instead of excluding the crop.
+        // Every crop here tolerates a wide texture range in ECOCROP, so a
+        // non-optimal texture lowers the score instead of excluding the crop.
         val optimal = texture in range.textures || 'W' in range.textures
         return FactorScore(
             name = "Soil texture",
@@ -345,50 +494,132 @@ object FarmSuitabilityEngine {
         )
     }
 
-    private fun nutrientPlan(cropName: String, probe: SensorReading?): List<NutrientAdvice> {
+    /** ECe in dS/m from the probe's bulk EC in µS/cm, or null when the probe sent none. */
+    internal fun ece(probe: SensorReading?): Double? =
+        probe?.electricalConductivity?.takeIf { it > 0.0 }?.let { it / 1000.0 * PROBE_EC_TO_ECE }
+
+    private fun salinityFactor(crop: FarmCrop, probe: SensorReading?): FactorScore? {
+        val salt = SALT[crop.name] ?: return null
+        val ece = ece(probe) ?: return null
+        val relativeYield = (100.0 - salt.slopePctPerDsM * (ece - salt.thresholdDsM).coerceAtLeast(0.0)).coerceIn(0.0, 100.0)
+        return FactorScore(
+            name = SALINITY,
+            score = relativeYield.roundToInt(),
+            detail = "ECe ≈ %.1f dS/m; yield falls %.1f %% per dS/m above %.1f (%s)".format(
+                ece, salt.slopePctPerDsM, salt.thresholdDsM, salt.source
+            ),
+            source = SOURCE_PROBE
+        )
+    }
+
+    /** Season mean rain above 250 mm/month and temperature above 24 °C over the crop's months. */
+    private fun wetAndWarm(range: EcocropRange, plantingMonth: Int, climate: ClimateNormals): Boolean {
+        val months = seasonMonths(range, plantingMonth)
+        return months.map { climate.rainfallMm[it - 1] }.average() > 250.0 &&
+            months.map { climate.temperatureC[it - 1] }.average() > 24.0
+    }
+
+    /**
+     * Vegetables in the Philippines are mostly grown in the dry season because wet-season
+     * disease cuts yields. ECOCROP has no disease term, so without this the engine favoured
+     * the wettest months for eggplant and ampalaya, opposite to when PSA records harvests.
+     */
+    private fun diseaseFactor(crop: FarmCrop, range: EcocropRange, plantingMonth: Int, climate: ClimateNormals?): FactorScore? {
+        if (climate == null || crop.family !in WET_SEASON_DISEASE) return null
+        val wet = wetAndWarm(range, plantingMonth, climate)
+        return FactorScore(
+            name = DISEASE,
+            score = if (wet) 100 - WET_SEASON_LOSS_PCT else 100,
+            detail = if (wet) "Wet, warm season: about $WET_SEASON_LOSS_PCT % yield lost to disease – plant in the dry season"
+            else "Dry or cool season: low disease pressure",
+            source = FarmSiteDataRepository.NASA_POWER
+        )
+    }
+
+    private fun risks(
+        crop: FarmCrop,
+        range: EcocropRange,
+        plantingMonth: Int,
+        climate: ClimateNormals?,
+        latitude: Double?,
+        previous: FarmCrop?
+    ): List<String> = buildList {
+        val months = seasonMonths(range, plantingMonth)
+        // PAGASA: most tropical cyclones cross Luzon and the Visayas from July to November;
+        // Mindanao south of about 9.5° N is rarely hit.
+        if (crop.tall && latitude != null && latitude >= 9.5 && months.any { it in 7..11 }) {
+            add("Typhoon season (Jul–Nov) overlaps the crop. Stake or trellis firmly, or plant after November.")
+        }
+        val advice = WET_SEASON_DISEASE[crop.family]
+        if (climate != null && advice != null && wetAndWarm(range, plantingMonth, climate)) {
+            add("Wet, warm season: $advice")
+        }
+        // Only families whose soil-borne diseases build up when replanted; continuous rice
+        // and rice-corn sequences are normal Philippine practice.
+        if (previous != null && previous.family == crop.family && crop.family in ROTATION_FAMILIES) {
+            add("Follows ${previous.name} (same family, ${crop.family}). Rotate to another family to break soil-borne disease.")
+        }
+    }
+
+    internal fun nutrientPlan(crop: FarmCrop, probe: SensorReading?): List<NutrientAdvice> {
         probe ?: return emptyList()
-        val profile = SeedRecommendationEngine.crops.first { it.name == cropName }
-        val ph = ECOCROP.getValue(cropName).ph
+        val ph = ECOCROP.getValue(crop.name).ph
         val phAdvice = NutrientAdvice(
             nutrient = "Soil pH",
-            measured = probe.soilPh,
-            targetLow = ph[1],
-            targetHigh = ph[2],
             status = when {
                 probe.soilPh < ph[1] -> NutrientStatus.LOW
                 probe.soilPh > ph[2] -> NutrientStatus.HIGH
                 else -> NutrientStatus.OK
             },
+            detail = "%.1f (best %.1f–%.1f)".format(probe.soilPh, ph[1], ph[2]),
             action = when {
                 probe.soilPh < ph[1] -> "Acidic: apply agricultural lime (dolomite) 2-3 weeks before planting"
                 probe.soilPh > ph[2] -> "Alkaline: add compost and use ammonium sulfate as the nitrogen source"
                 else -> "No pH correction needed"
             }
         )
-        return listOf(phAdvice) + listOf(
-            Triple("Nitrogen", probe.nitrogen, profile.nitrogen) to "Urea (46-0-0) or ammonium sulfate (21-0-0)",
-            Triple("Phosphorus", probe.phosphorus, profile.phosphorus) to "Solophos (0-18-0) or complete (14-14-14)",
-            Triple("Potassium", probe.potassium, profile.potassium) to "Muriate of potash (0-0-60)"
-        ).map { (reading, fertilizer) ->
-            val (nutrient, measured, target) = reading
-            val low = target.start * NPK_TABLE_SCALE
-            val high = target.endInclusive * NPK_TABLE_SCALE
+        val need = crop.needKgHa ?: return listOf(
+            phAdvice,
+            NutrientAdvice(
+                nutrient = "Fertilizer",
+                status = NutrientStatus.OK,
+                detail = "No verified per-hectare rate for ${crop.name}",
+                action = "Follow the DA production guide for ${crop.name}, or get a BSWM soil test"
+            )
+        )
+        val readings = listOf(probe.nitrogen, probe.phosphorus, probe.potassium)
+        val labels = listOf("Nitrogen", "Phosphorus", "Potassium")
+        val oxides = listOf("N", "P₂O₅", "K₂O")
+        // Straight fertilizers so each nutrient can be dosed alone.
+        val products = listOf("Urea (46-0-0)" to 0.46, "Solophos (0-18-0)" to 0.18, "Muriate of potash (0-0-60)" to 0.60)
+        return listOf(phAdvice) + readings.indices.map { i ->
+            val (low, high) = SOIL_TEST_LEVELS[i]
             val status = when {
-                measured < low -> NutrientStatus.LOW
-                measured > high -> NutrientStatus.HIGH
+                readings[i] < low -> NutrientStatus.LOW
+                readings[i] > high -> NutrientStatus.HIGH
                 else -> NutrientStatus.OK
             }
+            // Soil-test-level rates: low soils get the top of the crop's need, medium the
+            // middle, high a maintenance dose of half the bottom of the range.
+            val rate = when (status) {
+                NutrientStatus.LOW -> need[i].endInclusive
+                NutrientStatus.OK -> (need[i].start + need[i].endInclusive) / 2.0
+                NutrientStatus.HIGH -> need[i].start / 2.0
+            }
+            val (product, fraction) = products[i]
+            val productKg = rate / fraction
             NutrientAdvice(
-                nutrient = nutrient,
-                measured = measured,
-                targetLow = low,
-                targetHigh = high,
+                nutrient = labels[i],
                 status = status,
-                action = when (status) {
-                    NutrientStatus.LOW -> "Apply $fertilizer"
-                    NutrientStatus.HIGH -> "Skip ${nutrient.lowercase()} fertilizer this season"
-                    NutrientStatus.OK -> "No extra ${nutrient.lowercase()} needed"
-                }
+                detail = "%.0f mg/kg, %s (medium %.0f–%.0f)".format(
+                    readings[i],
+                    when (status) { NutrientStatus.LOW -> "low"; NutrientStatus.OK -> "medium"; NutrientStatus.HIGH -> "high" },
+                    low, high
+                ),
+                action = "Apply %.0f kg %s/ha = %.0f kg %s (%.1f bags/ha, %.1f kg per 1,000 m²)".format(
+                    rate, oxides[i], productKg, product, productKg / 50.0, productKg / 10.0
+                ),
+                applyKgPerHa = rate
             )
         }
     }
@@ -402,6 +633,9 @@ object FarmSuitabilityEngine {
         val mappedPh = site?.soil?.ph
         if (probe != null && mappedPh != null && abs(probe.soilPh - mappedPh) > 1.0) {
             add("Probe pH %.1f differs from the SoilGrids map (%.1f) by more than 1.0. Check the probe with a pH buffer or a lab test.".format(probe.soilPh, mappedPh))
+        }
+        ece(probe)?.takeIf { it >= 4.0 }?.let {
+            add("Soil EC suggests saline soil (ECe ≈ %.1f dS/m). Confirm with a laboratory ECe test and leach with good-quality water.".format(it))
         }
         val normals = site?.normals
         if (normals != null && climate != null && climate.temperatureC != normals.temperatureC) {
@@ -426,6 +660,16 @@ object FarmSuitabilityEngine {
         }
         if (site == null || site.status.values.all { it == SourceStatus.UNAVAILABLE }) {
             add("Climate and soil maps are not loaded yet. Set the farm latitude and longitude in Settings and connect to the internet once.")
+        }
+    }
+
+    /** Parses app/src/main/assets/crop_economics.json. */
+    fun parseEconomics(json: String): Map<String, CropEconomics> {
+        val crops = JSONObject(json).getJSONObject("crops")
+        return crops.keys().asSequence().associateWith { name ->
+            val entry = crops.getJSONObject(name)
+            fun value(key: String) = entry.optDouble(key).takeIf { it.isFinite() }
+            CropEconomics(value("yieldTonnesPerHa"), value("farmgatePricePhpPerKg"), value("grossPhpPerHa"))
         }
     }
 }

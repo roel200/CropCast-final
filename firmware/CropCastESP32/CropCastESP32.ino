@@ -5,11 +5,14 @@
 // console reference, and the SD card log format.
 //
 // Data contract (do not change without changing the Android app AND
-// firebase/database.rules.json): every reading record carries exactly these
-// nine fields, and `timestamp` is Unix milliseconds UTC.
+// firebase/database.rules.json): every reading record carries these nine
+// required fields, and `timestamp` is Unix milliseconds UTC.
 //
 //   temperature humidity soilMoisture soilPh nitrogen phosphorus potassium
 //   lightIntensity timestamp
+//
+// plus optional `electricalConductivity` (µS/cm, 0 = not measured), which the
+// app uses for its salinity check.
 //
 // Untrusted values are never written into readings/monthly, because the app
 // averages that path unweighted to pick a crop. See publishMonthlyHistory().
@@ -725,9 +728,9 @@ void logFirebaseError(const char *tag, const char *what) {
         firebaseData.httpCode());
 }
 
-// Exactly the nine contract fields. Adding a tenth would make the Android app
-// log an unknown-property warning on every snapshot; diagnostics belong under
-// /status instead.
+// The nine required contract fields plus optional EC. Any other key would make
+// the Android app log an unknown-property warning on every snapshot;
+// diagnostics belong under /status instead.
 void fillReadingJson(const SensorData &reading, FirebaseJson &json) {
   json.set("temperature", reading.temperature);
   json.set("humidity", reading.humidity);
@@ -738,6 +741,8 @@ void fillReadingJson(const SensorData &reading, FirebaseJson &json) {
   json.set("potassium", reading.potassium);
   json.set("lightIntensity", reading.lightIntensity);
   json.set("timestamp", static_cast<double>(reading.timestamp));
+  // 0 when the probe is untrusted; the app treats 0 as "not measured".
+  json.set("electricalConductivity", (reading.trusted & FIELD_NITROGEN) ? reading.ec : 0);
 }
 
 bool publishCurrentReading(const SensorData &reading) {

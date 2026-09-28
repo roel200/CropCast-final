@@ -6,6 +6,7 @@ import com.cropcast.app.data.model.AlertSettings
 import com.cropcast.app.data.model.AccountInfo
 import com.cropcast.app.data.model.DeviceStatus
 import com.cropcast.app.data.model.CropOutcomeFeedback
+import com.cropcast.app.data.model.FieldSample
 import com.cropcast.app.data.model.MonthlyCropRecommendation
 import com.cropcast.app.data.model.SensorReading
 import com.cropcast.app.data.model.isValidForRecommendation
@@ -117,6 +118,16 @@ class FirebaseSensorRepository(
         require(feedback.rating in 1..5) { "Outcome rating must be from 1 to 5" }
         require(feedback.harvestedKg >= 0.0) { "Harvest weight cannot be negative" }
         deviceRef.child("recommendations/feedback").push().setValue(feedback.copy(id = "")).await()
+    }
+
+    fun observeFieldSample(): Flow<FieldSample?> = valueFlow("samples/latest", null) {
+        it.getValue(FieldSample::class.java)?.takeIf { sample -> sample.spots > 0 }
+    }
+
+    suspend fun saveFieldSample(sample: FieldSample) {
+        connect().getOrThrow()
+        deviceRef.child("samples/history").push().setValue(sample).await()
+        deviceRef.child("samples/latest").setValue(sample).await()
     }
 
     fun observeStatus(): Flow<DeviceStatus> = valueFlow("status", DeviceStatus()) { snapshot ->

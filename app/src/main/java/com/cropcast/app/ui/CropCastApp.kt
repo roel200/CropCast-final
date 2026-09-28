@@ -144,21 +144,33 @@ fun CropCastApp(viewModel: CropCastViewModel) {
         }
     }
     val siteRepository = remember(context) { FarmSiteDataRepository(context.cacheDir) }
+    val cropEconomics = remember(context) {
+        runCatching {
+            context.assets.open("crop_economics.json").bufferedReader().use { FarmSuitabilityEngine.parseEconomics(it.readText()) }
+        }.getOrDefault(emptyMap())
+    }
     val siteData by produceState<FarmSiteData?>(initialValue = null, coordinates) {
         value = null
         coordinates?.let { (latitude, longitude) -> siteRepository.load(latitude, longitude).collect { value = it } }
     }
     val loadingSiteData = coordinates != null && (siteData?.status?.size ?: 0) < 3
-    // Monthly average once readings exist; the latest live reading before that.
-    val farmSoil = state.monthlySummary.takeIf { it.hasData }?.average
+    // A field sample from the last 180 days wins (it covers the whole field); then the
+    // monthly average; then the latest live reading.
+    val farmSoil = state.fieldSample?.takeIf { System.currentTimeMillis() - it.takenAt < 180L * 86_400_000L }?.average
+        ?: state.monthlySummary.takeIf { it.hasData }?.average
         ?: state.reading.takeIf { it.isValidForRecommendation() }
-    val farmRecommendation = remember(farmSoil, siteData, rainfallState.estimate, state.settings.irrigationAvailable) {
+    val farmRecommendation = remember(
+        farmSoil, siteData, rainfallState.estimate, state.settings.irrigationAvailable, state.settings.currentCrop, coordinates
+    ) {
         FarmSuitabilityEngine.recommend(
             soil = farmSoil,
             site = siteData,
             plantingMonth = LocalDate.now().monthValue,
             recentRainMm = rainfallState.estimate?.millimeters,
-            irrigated = state.settings.irrigationAvailable
+            irrigated = state.settings.irrigationAvailable,
+            latitude = coordinates?.first,
+            previousCrop = state.settings.currentCrop,  // the crop in the field now, from Settings
+            economics = cropEconomics
         )
     }
     var selected by remember { mutableIntStateOf(0) }
@@ -269,7 +281,12 @@ fun CropCastApp(viewModel: CropCastViewModel) {
                             )
                         }
                     )
-                    else -> SensorDashboardScreen(state)
+                    else -> SensorDashboardScreen(
+                        state = state,
+                        onRecordSpot = viewModel::recordSampleSpot,
+                        onSaveSample = viewModel::saveFieldSample,
+                        onClearSpots = viewModel::clearSampleSpots
+                    )
                 }
             }
         }

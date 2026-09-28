@@ -80,22 +80,39 @@ The firmware wiring defaults are DHT11 GPIO 4, SN-3002 7-in-1 soil probe through
 
 ## Crop recommendation engine
 
-The main recommendation (`FarmSuitabilityEngine`) ranks CropCast's 12 crops for the farm, planting this month, and shows the best months to plant. Temperature and rain follow FAO's ECOCROP model exactly as its reference implementation (R package Recocrop) computes it: monthly climate is interpolated to half-months, each half-month is scored on the crop's trapezoid (0 outside the absolute range, 100 inside the optimal range), the worst half-month over the growing season counts, and ECOCROP's crop-cycle rain totals are converted to monthly limits.
+The main recommendation (`FarmSuitabilityEngine`) ranks 17 crops for the farm: the original 12 plus pechay, kangkong, ampalaya, sitaw and kalabasa. It ranks them for planting this month, gives each an FAO suitability class, and shows the best months to plant. Temperature and rain follow FAO's ECOCROP model exactly as its reference implementation (R package Recocrop) computes it: monthly climate is interpolated to half-months, each half-month is scored on the crop's trapezoid (0 outside the absolute range, 100 inside the optimal range), the worst half-month over the growing season counts, and ECOCROP's crop-cycle rain totals are converted to monthly limits.
 
 | Factor | Role | Data source |
 |---|---|---|
 | Air temperature over the growing season | caps the score | NASA POWER 20-year normals, corrected for the farm's elevation; the Open-Meteo 16-day forecast replaces the first month; DHT11 when offline |
-| Soil pH | scales the score (weight 0.5) | 7-in-1 soil probe; ISRIC SoilGrids map when the probe has no reading |
+| Soil pH | scales the score (weight 0.5) | Field sample or 7-in-1 probe; ISRIC SoilGrids map when neither exists |
 | Rain over the growing season | scales the score (weight 0.3) | NASA POWER normals |
 | Soil texture (clay/sand) | scales the score (weight 0.2) | ISRIC SoilGrids |
+| Soil salinity | multiplies by FAO relative yield | Probe EC, scored with FAO's crop salt tolerance (Maas–Hoffman threshold and slope) |
+| Wet-season disease | multiplies by 0.85 in wet, warm seasons | Tomato, eggplant and potato family; cucumber, ampalaya and kalabasa family; cabbage and pechay family |
 | Crop ranges and cycle lengths | — | FAO ECOCROP (`data/processed/ecocrop_selected.csv`, bundled in the app) |
 
 - **Temperature caps the score** because a farmer cannot change it (0 means the crop cannot grow there). **pH, rain and texture scale it between 60 % and 100 %**, because lime or compost, irrigation and drainage can manage them. Unlike ECOCROP, pH is not absolute: validation showed tomato thriving on Ilocos soils above pH 7.5 and corn on Bukidnon soils below pH 4.5.
+- **FAO classes:** S1 highly suitable (80+), S2 moderately (60–79), S3 marginally (40–59), N not suitable (below 40).
 - **Irrigation available** (Settings → Crop Profile) stops dry months from lowering scores; too much rain still counts. Validation against PSA harvest quarters favours this for dry-season vegetables and the rain-fed default for rice, corn and highland potato.
 - **Elevation correction:** NASA's ~50 km grid cell can sit far below or above the farm (Benguet's cell averages ~700 m), so normals are shifted by the standard lapse rate (6.5 °C per km) using the farm elevation from the forecast.
-- **N, P and K never change the ranking**, because fertilizer can correct them. With pH they produce the soil plan for the top crop (lime, compost, fertilizer). Set `FarmSuitabilityEngine.NPK_TABLE_SCALE` from a laboratory soil test before trusting the probe's mg/kg against the crop table.
+- **Soil and fertilizer plan** for the top crop:
+  - The probe's N, P and K are classed Low, Medium or High against general soil-test levels (N 125/250, P 10/25, K 78/156 mg/kg).
+  - Low soils get the top of the crop's per-hectare need, medium soils the middle, high soils a maintenance dose.
+  - The result is kilograms of urea, solophos and muriate of potash per hectare, in 50 kg bags and per 1,000 m². pH gives lime or compost advice.
+  - Kangkong, ampalaya and sitaw have no verified per-hectare rate, so the app points to the DA production guide and a BSWM soil test instead.
+  - N, P and K never change the ranking, because fertilizer can correct them.
+- **Income:** each crop shows gross income per hectare from official PSA data (2021–2025 national yield × 2024–2025 farmgate price, before costs). The card names the best-income crop among S1 and S2 crops when it differs from the most suitable one. Rebuild with `scripts/build_crop_economics.py`.
+- **Season risks** (advice only):
+  - typhoon season (July–November) for tall, staked or trellised crops north of 9.5° N;
+  - wet-season disease by crop family;
+  - planting the same family twice for the tomato, cucumber and cabbage families, whose soil-borne diseases build up. Continuous rice and rice–corn are normal practice, so they are not flagged.
+- **Field soil sample** (Sensor screen): record the probe at 5–10 spots across the field, as in BSWM composite sampling. The app averages them, flags a pH spread over 1.0, saves the sample to `samples/latest`, and uses it for 180 days in place of the monthly average.
 - **Corn uses ECOCROP's Flint maize**, whose 90–140 day cycle matches Philippine corn; the generic Maize entry runs to 365 days and distorts the rain limits.
-- **Warnings** compare the probe pH with the SoilGrids map, report the elevation correction, and flag heavy or light rain, high humidity and a dry recent month.
+- **Calibration knobs** in `FarmSuitabilityEngine`:
+  - `SOIL_TEST_LEVELS` and `PROBE_EC_TO_ECE`: set both from one BSWM laboratory test taken at the same spot as a probe reading.
+  - `WET_SEASON_LOSS_PCT`: the flat 15 % wet-season loss.
+- **Warnings** compare the probe pH with the SoilGrids map, flag saline soil (ECe 4 dS/m or more), report the elevation correction, flag heavy or light rain, high humidity and a dry recent month, and repeat the top crop's season risks.
 - **Data sources need no API key.** Every online answer is cached on the phone, so the last good copy is used without internet. With no location or cache, the engine still ranks crops from the probe and the DHT11. Set the farm latitude and longitude in **Settings** to turn on climate and soil data.
 - **Validation:** see `data/validation/README.md`.
 

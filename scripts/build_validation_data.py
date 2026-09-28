@@ -42,6 +42,8 @@ VEGETABLES = {
     "Cabbage": "Cabbage", "Camote [Sweet potato]": "Sweet Potato", "Eggplant": "Eggplant",
     "Tomato": "Tomato", "Potato": "Potato", "Lettuce": "Lettuce", "Okra [Lady's finger]": "Okra",
     "Cucumber": "Cucumber", "Alugbati": "Alugbati", "Spinach": "Spinach",
+    "..Pechay, native": "Pechay", "Kangkong [Swamp cabbage]": "Kangkong",
+    "Ampalaya fruit [Bitter gourd]": "Ampalaya", "Sitao [Stringbeans]": "Sitaw", "Squash fruit": "Kalabasa",
 }
 GRAINS = {"Palay": "Rice", "Corn": "Corn"}
 SOILSSYNC_CROPS = {"Corn": "Corn", "Tomato": "Tomato", "Rice": "Rice"}
@@ -85,7 +87,7 @@ def psa_table(table: str, crop_variable: str, crops: dict[str, str]) -> pd.DataF
         ],
         "response": {"format": "csv"},
     }
-    text = cached(f"psa-csv-{table}-{YEARS}", lambda: session.post(PSA + table, json=query, timeout=180).text)
+    text = cached(f"psa-csv-{table}-{YEARS}-{sorted(crops)}", lambda: session.post(PSA + table, json=query, timeout=180).text)
     wide = pd.read_csv(io.StringIO(text))
     long = wide.melt(id_vars=[crop_variable, "Geolocation"], var_name="yearPeriod", value_name="tonnes")
     rows = []

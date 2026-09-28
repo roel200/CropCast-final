@@ -21,7 +21,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import com.cropcast.app.ui.CropCastUiState
+import com.cropcast.app.ui.MAX_SAMPLE_SPOTS
+import com.cropcast.app.ui.MIN_SAMPLE_SPOTS
+import com.cropcast.app.ui.components.RoundedCard
 import com.cropcast.app.ui.components.MetricCard
 import com.cropcast.app.ui.components.SectionTitle
 import com.cropcast.app.ui.localization.tr
@@ -38,13 +43,19 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun SensorDashboardScreen(state: CropCastUiState) {
+fun SensorDashboardScreen(
+    state: CropCastUiState,
+    onRecordSpot: () -> Unit,
+    onSaveSample: () -> Unit,
+    onClearSpots: () -> Unit
+) {
     val r = state.reading
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { SensorStatusCard(state) }
+        item { FieldSampleCard(state, onRecordSpot, onSaveSample, onClearSpots) }
         item { SectionTitle("📅", tr("Monthly Sensor Readings")) }
         if (state.monthlySummaries.isEmpty()) {
             item { EmptyMonthlyCollectionCard() }
@@ -163,4 +174,67 @@ private fun SensorStatusCard(state: CropCastUiState) {
 @Composable
 private fun MetricRow(content: @Composable RowScope.() -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp), content = content)
+}
+
+/** BSWM-style composite sample: record the probe at several spots, then average. */
+@Composable
+private fun FieldSampleCard(
+    state: CropCastUiState,
+    onRecordSpot: () -> Unit,
+    onSaveSample: () -> Unit,
+    onClearSpots: () -> Unit
+) {
+    val spots = state.samplingSpots
+    RoundedCard(color = MaterialTheme.colorScheme.surface) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "🧪 ${tr("Field soil sample")}",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 15.sp
+            )
+            Text(
+                tr("Walk the field in a zig-zag. At each of 5-10 spots, push the probe 15-20 cm deep, wait for a new reading, then tap Record spot."),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
+            if (spots.isNotEmpty()) {
+                Text(
+                    "%d/%d %s · pH %.1f–%.1f · N %.0f · P %.0f · K %.0f mg/kg".format(
+                        spots.size, MAX_SAMPLE_SPOTS, tr("spots"),
+                        spots.minOf { it.soilPh }, spots.maxOf { it.soilPh },
+                        spots.map { it.nitrogen }.average(), spots.map { it.phosphorus }.average(),
+                        spots.map { it.potassium }.average()
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 12.sp
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onRecordSpot, enabled = spots.size < MAX_SAMPLE_SPOTS) {
+                    Text("${tr("Record spot")} ${spots.size + 1}")
+                }
+                Button(onClick = onSaveSample, enabled = spots.size >= MIN_SAMPLE_SPOTS) { Text(tr("Save sample")) }
+                if (spots.isNotEmpty()) OutlinedButton(onClick = onClearSpots) { Text(tr("Clear")) }
+            }
+            state.fieldSample?.let { sample ->
+                Text(
+                    "%s: %s · %d %s · pH %.1f (%s %.1f) · N %.0f · P %.0f · K %.0f mg/kg".format(
+                        tr("Last sample"), DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(sample.takenAt)),
+                        sample.spots, tr("spots"), sample.average.soilPh, tr("spread"), sample.phSpread,
+                        sample.average.nitrogen, sample.average.phosphorus, sample.average.potassium
+                    ),
+                    color = CropGreen,
+                    fontSize = 11.sp
+                )
+                if (sample.phSpread > 1.0) {
+                    Text(
+                        tr("pH varies more than 1.0 across the field; consider managing the areas separately."),
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+    }
 }

@@ -28,16 +28,21 @@ class FarmKnownAnswerTest {
         nitrogen = 50.0, phosphorus = 30.0, potassium = 60.0, timestamp = 1L
     )
 
-    /** A farm where every condition sits inside `crop`'s ECOCROP optimum all year. */
+    private fun diseaseProne(crop: String) =
+        FarmSuitabilityEngine.CROPS.first { it.name == crop }.family in FarmSuitabilityEngine.WET_SEASON_DISEASE
+
+    /** A farm where every condition sits inside `crop`'s ECOCROP optimum all year, outside the wet, warm disease season. */
     private fun idealFarm(crop: String): Pair<FarmSiteData, SensorReading> {
         val range = FarmSuitabilityEngine.ECOCROP.getValue(crop)
         val rain = range.monthlyRainfall
         val ph = uniform(range.ph[1], range.ph[2])
         val group = range.textures.firstOrNull { it in "LMH" } ?: "LMH".random(random)
         val (clay, sand) = textureFor(group)
+        // Every disease-prone crop's optimum starts at or below 24 °C, the disease threshold.
+        val warmest = if (diseaseProne(crop)) minOf(range.temperature[2], 24.0) else range.temperature[2]
         val site = FarmSiteData(
             normals = ClimateNormals(
-                temperatureC = List(12) { uniform(range.temperature[1], range.temperature[2]) },
+                temperatureC = List(12) { uniform(range.temperature[1], warmest) },
                 humidityPct = List(12) { 80.0 },
                 rainfallMm = List(12) { uniform(rain[1], rain[2]) }
             ),
@@ -97,7 +102,7 @@ class FarmKnownAnswerTest {
             for (probe in listOf(soil, null)) {
                 val result = FarmSuitabilityEngine.recommend(probe, site.takeIf { mask != 0 }, plantingMonth = 1 + mask % 12)
                 assertTrue("mask $mask", result.ranked.all { it.score in 0..100 && it.factors.isNotEmpty() })
-                assertTrue("mask $mask", result.ranked.isEmpty() || result.ranked.size == 12)
+                assertTrue("mask $mask", result.ranked.isEmpty() || result.ranked.size == FarmSuitabilityEngine.CROPS.size)
             }
         }
     }
@@ -110,8 +115,10 @@ class FarmKnownAnswerTest {
             fun scoreAt(temperature: Double) = FarmSuitabilityEngine.recommend(
                 soil, site.copy(normals = site.normals!!.copy(temperatureC = List(12) { temperature })), plantingMonth = 3
             ).ranked.first { it.crop.name == crop }.score
-            // Walk up from below the absolute minimum to the middle of the optimum.
-            val middle = (range.temperature[1] + range.temperature[2]) / 2.0
+            // Walk up from below the absolute minimum to the middle of the optimum. Past 24 °C a
+            // wet season adds disease loss to prone crops, a deliberate drop, so stop there.
+            val middle = ((range.temperature[1] + range.temperature[2]) / 2.0)
+                .let { if (diseaseProne(crop)) minOf(it, 24.0) else it }
             val steps = (0..40).map { range.temperature[0] - 2.0 + it * (middle - range.temperature[0] + 2.0) / 40.0 }
             steps.zipWithNext().forEach { (colder, warmer) ->
                 assertTrue("$crop $colder -> $warmer", scoreAt(warmer) >= scoreAt(colder))
@@ -151,7 +158,9 @@ class FarmKnownAnswerTest {
                 temperatures.all { it in r.temperature[1]..r.temperature[2] } &&
                     rains.all { it in rain[1]..rain[2] } &&
                     ph in r.ph[1]..r.ph[2] &&
-                    (texture in r.textures || 'W' in r.textures)
+                    (texture in r.textures || 'W' in r.textures) &&
+                    // Disease-prone crops lose yield in any season averaging over 250 mm and 24 °C.
+                    (!diseaseProne(crop) || rains.max() <= 250.0 || temperatures.max() <= 24.0)
             }
             val tooHotOrCold = crops.filter { crop ->
                 val r = FarmSuitabilityEngine.ECOCROP.getValue(crop)

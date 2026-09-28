@@ -15,7 +15,8 @@
             "phosphorus": { ".validate": "newData.isNumber() && newData.val() >= 0" },
             "potassium": { ".validate": "newData.isNumber() && newData.val() >= 0" },
             "lightIntensity": { ".validate": "newData.isNumber() && newData.val() >= 0" },
-            "timestamp": { ".validate": "newData.isNumber()" }
+            "timestamp": { ".validate": "newData.isNumber()" },
+            "electricalConductivity": { ".validate": "newData.isNumber() && newData.val() >= 0" }
           },
           "monthly": {
             "$month": {
@@ -30,7 +31,8 @@
                 "phosphorus": { ".validate": "newData.isNumber() && newData.val() >= 0" },
                 "potassium": { ".validate": "newData.isNumber() && newData.val() >= 0" },
                 "lightIntensity": { ".validate": "newData.isNumber() && newData.val() >= 0" },
-                "timestamp": { ".validate": "newData.isNumber()" }
+                "timestamp": { ".validate": "newData.isNumber()" },
+                "electricalConductivity": { ".validate": "newData.isNumber() && newData.val() >= 0" }
               }
             }
           },
@@ -54,6 +56,7 @@
           }
         },
         "status": { ".write": "auth != null" },
+        "samples": { ".write": "auth != null" },
         "commands": { ".write": "auth != null" },
         "settings": {
           ".write": "auth != null",

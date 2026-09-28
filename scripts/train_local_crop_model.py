@@ -54,17 +54,27 @@ ECOCROP_NAMES = {
     "Lettuce": "Lettuce",
     "Spinach": "Spinach",
 }
+# Extra Philippine crops ranked by the app's FarmSuitabilityEngine. They are exported to
+# ecocrop_selected.csv but not used to train this model, which has no NPK data for them.
+ENGINE_ONLY_NAMES = {
+    "Pechay": "Pak choi",            # Brassica rapa, Pak Choi group
+    "Kangkong": "Kang kong",         # Ipomoea aquatica
+    "Ampalaya": "Bitter gourd *",    # Momordica charantia
+    "Sitaw": "Asparagus bean",       # Vigna unguiculata subsp. sesquipedalis
+    "Kalabasa": "Pumpkin",           # Cucurbita moschata
+}
 SOILSSYNC_TO_CROPCAST = {"Corn": "Corn", "Tomato": "Tomato", "Rice": "Rice"}
 
 
-def load_ecocrop() -> pd.DataFrame:
+def load_ecocrop(names: dict[str, str] = ECOCROP_NAMES) -> pd.DataFrame:
     table = pyreadr.read_r(ECOCROP_PATH)[None]
-    rows = table[table["NAME"].isin(ECOCROP_NAMES.values())].set_index("NAME")
-    missing = set(ECOCROP_NAMES.values()) - set(rows.index)
+    # "Kang kong" has two identical rows (aquatic and upland forms); keep one.
+    rows = table[table["NAME"].isin(names.values())].drop_duplicates("NAME").set_index("NAME")
+    missing = set(names.values()) - set(rows.index)
     if missing:
         raise ValueError(f"ECOCROP rows not found: {sorted(missing)}")
-    selected = rows.loc[list(ECOCROP_NAMES.values())].reset_index()
-    selected.insert(0, "crop", list(ECOCROP_NAMES))
+    selected = rows.loc[list(names.values())].reset_index()
+    selected.insert(0, "crop", list(names))
     columns = ["crop", "NAME", "SCIENTNAME", "TMIN", "TOPMN", "TOPMX", "TMAX",
                "PHMIN", "PHOPMN", "PHOPMX", "PHMAX", "RMIN", "ROPMN", "ROPMX", "RMAX", "TEXT", "GMIN", "GMAX"]
     selected = selected[columns]
@@ -136,7 +146,7 @@ def main() -> None:
 
     ecocrop = load_ecocrop()
     ECOCROP_SELECTED_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ecocrop.to_csv(ECOCROP_SELECTED_PATH, index=False)
+    load_ecocrop({**ECOCROP_NAMES, **ENGINE_ONLY_NAMES}).to_csv(ECOCROP_SELECTED_PATH, index=False)
     wosis_ph = load_wosis_topsoil_ph()
     data = synthesize(ecocrop, wosis_ph, args.npk_scale)
     OUT_DIR.mkdir(parents=True, exist_ok=True)

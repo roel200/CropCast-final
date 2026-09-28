@@ -12,6 +12,8 @@ import com.cropcast.app.data.model.AlertSettings
 import com.cropcast.app.data.model.AccountInfo
 import com.cropcast.app.data.model.DeviceStatus
 import com.cropcast.app.data.model.CropOutcomeFeedback
+import com.cropcast.app.data.model.FieldSample
+import com.cropcast.app.data.model.isValidForRecommendation
 import com.cropcast.app.data.model.MonthlyCropRecommendation
 import com.cropcast.app.data.model.MonthlySensorSummary
 import com.cropcast.app.data.model.SeedRecommendation
@@ -53,6 +55,9 @@ data class CropCastUiState(
     val forecastHistory: List<MonthlyCropRecommendation> = emptyList(),
     val outcomeFeedback: List<CropOutcomeFeedback> = emptyList(),
     val recommendation: SeedRecommendation? = null,
+    /** Probe readings recorded at different spots for the next field sample. */
+    val samplingSpots: List<SensorReading> = emptyList(),
+    val fieldSample: FieldSample? = null,
     val account: AccountInfo = AccountInfo(),
     val isDemo: Boolean = false,
     val isAuthenticated: Boolean = false,
@@ -93,7 +98,8 @@ class CropCastViewModel(
         val alerts: List<AlertEvent> = emptyList(),
         val monthlyReadings: Map<String, List<SensorReading>> = emptyMap(),
         val monthlyRecommendations: Map<String, Map<String, MonthlyCropRecommendation>> = emptyMap(),
-        val outcomeFeedback: List<CropOutcomeFeedback> = emptyList()
+        val outcomeFeedback: List<CropOutcomeFeedback> = emptyList(),
+        val fieldSample: FieldSample? = null
     )
 
     private val remoteState = seedState
@@ -115,9 +121,10 @@ class CropCastViewModel(
             combine(
                 baseRemoteState,
                 repository.observeMonthlyRecommendations(),
-                repository.observeOutcomeFeedback()
-            ) { remote, recommendations, feedback ->
-                remote.copy(monthlyRecommendations = recommendations, outcomeFeedback = feedback)
+                repository.observeOutcomeFeedback(),
+                repository.observeFieldSample()
+            ) { remote, recommendations, feedback, sample ->
+                remote.copy(monthlyRecommendations = recommendations, outcomeFeedback = feedback, fieldSample = sample)
             }
         }
     }
@@ -165,6 +172,7 @@ class CropCastViewModel(
                 nextMonthRecommendation = nextMonthRecommendation ?: forecastHistory.firstOrNull(),
                 forecastHistory = forecastHistory,
                 outcomeFeedback = remote.outcomeFeedback,
+                fieldSample = remote.fieldSample ?: local.fieldSample,
                 recommendation = nextMonthRecommendation?.recommendedCrop
                     ?: monthlyRecommendations.firstOrNull()?.recommendedCrop
             )
@@ -470,6 +478,44 @@ class CropCastViewModel(
         }
     }
 
+    fun recordSampleSpot() {
+        val state = uiState.value
+        val reading = state.reading
+        val spots = seedState.value.samplingSpots
+        when {
+            !reading.isValidForRecommendation() || reading.soilPh <= 0.0 ->
+                return showMessage("Wait for a valid probe reading, then record the spot")
+            spots.size >= MAX_SAMPLE_SPOTS -> return showMessage("$MAX_SAMPLE_SPOTS spots recorded; save the sample")
+            // The ESP32 publishes every 15 s; the same timestamp means the probe has not been re-read.
+            !state.isDemo && spots.lastOrNull()?.timestamp == reading.timestamp ->
+                return showMessage("Move the probe to a new spot and wait for a fresh reading")
+        }
+        seedState.value = seedState.value.copy(samplingSpots = spots + reading)
+    }
+
+    fun clearSampleSpots() {
+        seedState.value = seedState.value.copy(samplingSpots = emptyList())
+    }
+
+    fun saveFieldSample() {
+        val spots = seedState.value.samplingSpots
+        if (spots.size < MIN_SAMPLE_SPOTS) return showMessage("Record at least $MIN_SAMPLE_SPOTS spots across the field")
+        val sample = MonthlySensorAggregator.fieldSample(spots, System.currentTimeMillis())
+            ?: return showMessage("The recorded spots were not valid readings")
+        if (uiState.value.isDemo) {
+            seedState.value = seedState.value.copy(
+                fieldSample = sample, samplingSpots = emptyList(), message = "Field sample saved in demo mode"
+            )
+        } else viewModelScope.launch {
+            runCatching { repository.saveFieldSample(sample) }
+                .onSuccess {
+                    seedState.value = seedState.value.copy(fieldSample = sample, samplingSpots = emptyList())
+                    showMessage("Field sample saved")
+                }
+                .onFailure { showMessage(it.message ?: "Could not save the field sample") }
+        }
+    }
+
     fun clearMessage() { seedState.value = seedState.value.copy(message = null) }
 
     private fun showMessage(message: String) {
@@ -555,6 +601,10 @@ private fun demoMonthlyReadings(
         month.toString() to readings
     }
 }
+
+/** BSWM composite sampling: several spots across the field, averaged. */
+const val MIN_SAMPLE_SPOTS = 5
+const val MAX_SAMPLE_SPOTS = 10
 
 class CropCastViewModelFactory(
     private val repository: FirebaseSensorRepository,

@@ -9,7 +9,9 @@ data class SensorReading(
     val phosphorus: Double = 0.0,
     val potassium: Double = 0.0,
     val lightIntensity: Double = 0.0,
-    val timestamp: Long = 0L
+    val timestamp: Long = 0L,
+    /** Bulk soil EC from the 7-in-1 probe in µS/cm; 0 means not measured (older firmware). */
+    val electricalConductivity: Double = 0.0
 )
 
 /** Shared plausibility gate for imported, simulated, and live sensor readings. */
@@ -22,7 +24,20 @@ fun SensorReading.isValidForRecommendation(): Boolean =
         nitrogen.isFinite() && nitrogen >= 0.0 &&
         phosphorus.isFinite() && phosphorus >= 0.0 &&
         potassium.isFinite() && potassium >= 0.0 &&
-        lightIntensity.isFinite() && lightIntensity >= 0.0
+        lightIntensity.isFinite() && lightIntensity >= 0.0 &&
+        electricalConductivity.isFinite() && electricalConductivity >= 0.0
+
+/**
+ * A field soil sample: the probe averaged over several spots, the composite
+ * sampling BSWM uses so one unusual spot cannot decide the recommendation.
+ */
+data class FieldSample(
+    val average: SensorReading = SensorReading(),
+    val spots: Int = 0,
+    /** Highest minus lowest pH across the spots; a large spread means an uneven field. */
+    val phSpread: Double = 0.0,
+    val takenAt: Long = 0L
+)
 
 data class MonthlySensorSummary(
     val monthKey: String = "",

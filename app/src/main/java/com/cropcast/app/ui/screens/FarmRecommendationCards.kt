@@ -36,6 +36,10 @@ import com.cropcast.app.ui.localization.tr
 import com.cropcast.app.ui.theme.CropGreen
 
 private val WarningColor = Color(0xFFE95D5D)
+/** 677900.0 -> "678k"; 85200.0 -> "85k". */
+private fun formatPesos(amount: Double): String =
+    if (amount >= 1_000_000) "%.1fM".format(amount / 1_000_000) else "%.0fk".format(amount / 1_000)
+
 private val MONTH_NAMES = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 private fun suitabilityColor(score: Int): Color = when {
@@ -77,6 +81,13 @@ private fun CropScoreRow(rank: Int, suitability: CropSuitability) {
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = if (rank == 1) 16.sp else 14.sp
+                )
+                Text(
+                    "${suitability.suitabilityClass.code} · ${tr(suitability.suitabilityClass.label)}" +
+                        (suitability.economics?.grossPhpPerHa?.let { " · ≈ ₱${formatPesos(it)}/ha ${tr("gross")}" } ?: ""),
+                    color = color,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp
                 )
                 val limit = suitability.limitingFactor?.takeIf { it.score < 100 }
                 if (limit != null) {
@@ -129,8 +140,18 @@ fun FarmRecommendationCard(recommendation: FarmRecommendation?, loadingSiteData:
             recommendation.ranked.take(3).forEachIndexed { index, suitability ->
                 CropScoreRow(index + 1, suitability)
             }
+            recommendation.bestValue?.takeIf { it.crop.name != recommendation.top?.crop?.name }?.let { value ->
+                Text(
+                    "💰 ${tr("Best income among suitable crops")}: ${value.crop.name} " +
+                        "(${value.suitabilityClass.code}, ≈ ₱${formatPesos(value.economics!!.grossPhpPerHa!!)}/ha ${tr("gross")})",
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp
+                )
+            }
             Text(
-                "${tr("Suitability score")} · ${tr("planting this month")}",
+                "${tr("FAO suitability classes")} S1–S3/N · ${tr("planting this month")} · " +
+                    tr("income: PSA national yield × farmgate price, before costs"),
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .70f),
                 fontSize = 10.sp
             )
@@ -157,6 +178,9 @@ fun FarmFactorsCard(recommendation: FarmRecommendation) {
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 12.sp
                 )
+            }
+            for (risk in top.risks) {
+                Text("⚠️ $risk", color = WarningColor, fontSize = 11.sp)
             }
             for (factor in top.factors) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -193,9 +217,7 @@ fun NutrientPlanCard(recommendation: FarmRecommendation) {
                 Column {
                     Row(Modifier.fillMaxWidth()) {
                         Text(
-                            // pH needs a decimal; N/P/K do not.
-                            (if (advice.nutrient == "Soil pH") "%s: %.1f (%s %.1f–%.1f)" else "%s: %.0f (%s %.0f–%.0f)")
-                                .format(tr(advice.nutrient), advice.measured, tr("target"), advice.targetLow, advice.targetHigh),
+                            "${tr(advice.nutrient)}: ${advice.detail}",
                             modifier = Modifier.weight(1f),
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 12.sp
@@ -206,7 +228,7 @@ fun NutrientPlanCard(recommendation: FarmRecommendation) {
                 }
             }
             Text(
-                tr("N, P and K do not change the crop ranking because fertilizer can correct them. Confirm exact rates with a soil laboratory test."),
+                tr("Rates follow soil-test levels (low, medium, high). N, P and K do not change the crop ranking because fertilizer can correct them. Confirm with a BSWM soil test."),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .75f),
                 fontSize = 10.sp
             )
