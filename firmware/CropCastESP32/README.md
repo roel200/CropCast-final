@@ -41,12 +41,28 @@ The sketch uses about 99 % of the default 1.3 MB app partition. Select **Tools �
 
 ## Setup
 
-1. Copy `secrets.example.h` to `secrets.h`.
-2. Enter the Wi-Fi, Firebase Realtime Database, and Firebase Authentication credentials.
-3. Create the firmware email/password user in Firebase Authentication.
-4. Deploy `../../firebase/database.rules.json`.
-5. Select the correct ESP32 board and serial port, then upload `CropCastESP32.ino`.
-6. Open Serial Monitor at 115200 baud, **set the line ending to Newline**, and type `help`.
+1. Create `secrets.h` (gitignored) with `FIREBASE_API_KEY`, `FIREBASE_DATABASE_URL`, `FIREBASE_USER_EMAIL` and `FIREBASE_USER_PASSWORD`. Wi-Fi and device id are no longer compiled in; they are set by pairing.
+2. Create the firmware email/password user in Firebase Authentication.
+3. Deploy `../../firebase/database.rules.json`.
+4. Select the correct ESP32 board and serial port, then upload `CropCastESP32.ino`.
+5. Pair the device (below). Serial Monitor at 115200 baud, **line ending Newline**, `help` lists commands.
+
+## Pairing
+
+A device with no saved Wi-Fi opens its own access point instead of connecting anywhere.
+
+1. In the app, sign in (email or Google), open Settings, tap **Pair a device**. The app shows a pairing code.
+2. On the phone, join the Wi-Fi network `CropCast-XXXX` printed in the serial log. The setup page opens by itself (or browse to `http://192.168.4.1/`).
+3. Pick your home Wi-Fi (2.4 GHz), enter its password and the pairing code, tap **Connect**.
+4. The firmware tests the Wi-Fi first; a wrong password is reported on the page and nothing is saved. On success it saves, restarts, joins the Wi-Fi and publishes to `/devices/<pairing code>`.
+
+**The pairing code is the device id.** The app (`PairingCode.kt`) generates a random 4-digit PIN such as `4821`, skipping any PIN that already has a device. The firmware accepts 4-40 letters, digits, `-` or `_`. When `/devices/<code>/status/online` turns true, the app saves the code at `users/<uid>/deviceId`, so every phone signed in to that account reads this device. Accounts with no saved code still read the build-time `cropcast.deviceId`.
+
+To pair again: hold the **BOOT** button 5 seconds, or run `pair` in the console. Both erase the saved Wi-Fi and code, then reopen the portal.
+
+The setup access point is open by default, so the Wi-Fi password crosses the air unencrypted during setup. Define `CROPCAST_AP_PASSWORD "..."` (8+ characters) in `secrets.h` to make it WPA2.
+
+Security limit: the code is a secret path, and the rules still let any signed-in user read any device. Per-owner rules (`devices/$id/owner`) are the next step.
 
 Live readings are written every 15 seconds. One sample per hour is stored in `readings/monthly/yyyy-MM/yyyy-MM-dd_HH-00-00`, so the Android dashboard can display every available month and generate crop recommendations from monthly averages. The `cloudHistoryEnabled` setting controls whether those history samples are stored.
 
@@ -71,6 +87,7 @@ The console is serviced before the network check, so it keeps working with Wi-Fi
 | `sensors` | List channels; `sensors soil off` marks one not wired for this session |
 | `log [level]` | Show or set verbosity: `off error warn info debug trace` |
 | `history [on\|off]` | Local override of `cloudHistoryEnabled`, so a bench test never lands in the month |
+| `pair` | Forget Wi-Fi and pairing code, restart into the setup portal |
 | `reboot` | Mark the device offline, then restart |
 
 Log lines are fixed-width and greppable:
@@ -91,6 +108,8 @@ date_time,moisture_pct,temp_c,ec_uscm,ph,nitrogen_mgkg,phosphorus_mgkg,potassium
 ```
 
 The first eleven columns match the standalone probe sketch, so its files can be merged with these. `temp_c` is soil temperature. An untrusted field is an empty cell, never `0`. If the card is missing or removed, logging retries every cycle; set `CROPCAST_SD_ENABLED false` in `secrets.h` to turn it off.
+
+**Offline backfill.** While Wi-Fi is down only the SD card records. After it reconnects, the firmware reads the SD rows it missed and uploads the first complete row of each hour to `readings/monthly`, using the same hour keys as the live path, so it never double-counts an hour. Up to 8 Firebase operations per cycle, newest-first limit of 7 days, current hour left to the live path. Progress is kept in flash (`bf`, UTC seconds), so it survives reboots and resumes where it stopped. `readings/current` is never backfilled, since it is only meaningful live. Rows with an empty scored field (moisture, pH, N, P, K, air temperature, humidity) are skipped, as in the live path. The clock must have synced at least once, so a boot with no internet at all still logs nothing.
 
 The probe's factory calibration is used as-is. Before trusting N/P/K for crop scoring, compare one reading against a laboratory soil test from the same spot.
 
@@ -141,6 +160,8 @@ Alongside `online`, `lastSeen`, `firmware`, and `sensors[]`, the firmware publis
 | `SOIL: no response` | Run `soil`. Check TXD→16, RXD→17, yellow→A, blue→B, 12 V probe power, 12 V ground tied to ESP32 GND. |
 | `no valid frame (bad CRC or wrong slave id)` | Bytes arrive but do not decode. Swap A and B, then check the slave ID and 4800 baud in the probe manual. |
 | `SD: no card on CS GPIO 5` | Card missing or not FAT32. Check CS 5, SCK 18, MOSI 23, MISO 19 and 5 V. |
+| No `CropCast-XXXX` network | Device already holds a Wi-Fi + code. Hold BOOT 5 s or run `pair`. |
+| Portal says it could not join the Wi-Fi | Wrong password, or a 5 GHz-only network. The ESP32 needs 2.4 GHz. |
 | `clock not synced` | NTP is unreachable. Readings are withheld on purpose until it succeeds; `time sync` retries. |
 | Firebase error with `http 400` | The database rules rejected the write — usually a value outside the validated range. |
 | Firebase error with `http 401` | Authentication failed. Check the API key and that the firmware user exists in Firebase Authentication. |

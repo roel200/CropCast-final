@@ -27,6 +27,9 @@
 #include <strings.h>  // strcasecmp / strncasecmp, used by the serial console
 #include <time.h>
 #include <WiFi.h>
+#include <WebServer.h>
+#include <DNSServer.h>
+#include <Preferences.h>
 #include <Wire.h>
 #include <SPI.h>
 #include <SD.h>
@@ -35,6 +38,7 @@
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include "secrets.h"
+#include "portal_logo.h"
 
 // ---------------------------------------------------------------------------
 // B. Build-time configuration. Every value here can be overridden from
@@ -43,6 +47,11 @@
 // ---------------------------------------------------------------------------
 #ifndef CROPCAST_LOG_LEVEL
 #define CROPCAST_LOG_LEVEL 4  // 0=off 1=error 2=warn 3=info 4=debug 5=trace
+#endif
+// Optional WPA2 password (8+ chars) for the setup access point. Empty = open AP,
+// which means the Wi-Fi password typed into the setup page crosses the air unencrypted.
+#ifndef CROPCAST_AP_PASSWORD
+#define CROPCAST_AP_PASSWORD ""
 #endif
 #ifndef CROPCAST_CONSOLE_ENABLED
 #define CROPCAST_CONSOLE_ENABLED true
@@ -84,6 +93,9 @@ constexpr unsigned long SOIL_BAUD = 4800;
 constexpr uint8_t SOIL_SLAVE_ID = 0x01;
 // Registers 0x0000..0x0008: moisture, temperature, EC, pH, N, P, K, salinity, TDS.
 constexpr uint8_t SOIL_REGISTER_COUNT = 9;
+// Hold the ESP32 BOOT button this long to forget Wi-Fi + pairing and reopen setup.
+constexpr uint8_t PAIR_BUTTON_PIN = 0;
+constexpr unsigned long PAIR_BUTTON_HOLD_MS = 5UL * 1000UL;
 constexpr uint8_t SD_CARD_CS = 5;  // SCK 18, MISO 19, MOSI 23 (default VSPI)
 // SD file names and rows use Philippine time; Firebase stays UTC.
 constexpr long SD_UTC_OFFSET_SECONDS = 8L * 3600L;
@@ -97,6 +109,7 @@ constexpr unsigned long LIVE_PUBLISH_INTERVAL_MS = 15UL * 1000UL;
 constexpr unsigned long SETTINGS_INTERVAL_MS = 60UL * 1000UL;
 constexpr unsigned long COMMAND_INTERVAL_MS = 5UL * 1000UL;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 10UL * 1000UL;
+constexpr unsigned long WIFI_TEST_TIMEOUT_MS = 15UL * 1000UL;
 constexpr unsigned long HEARTBEAT_INTERVAL_MS = 60UL * 1000UL;
 constexpr unsigned long SENSOR_STALE_AFTER_MS = 5UL * 60UL * 1000UL;
 constexpr unsigned long HISTORY_LOG_INTERVAL_MS = 60UL * 1000UL;
@@ -105,7 +118,7 @@ constexpr unsigned long DHT_MIN_INTERVAL_MS = 2UL * 1000UL;
 constexpr unsigned long SOIL_MAX_WAIT_MS = 500UL;
 constexpr unsigned long SOIL_BYTE_GAP_MS = 30UL;
 constexpr time_t MIN_VALID_EPOCH_SECONDS = 1700000000;
-constexpr char FIRMWARE_VERSION[] = "2.1.0";
+constexpr char FIRMWARE_VERSION[] = "2.2.0";
 
 // ---------------------------------------------------------------------------
 // F. Plausibility limits. These mirror firebase/database.rules.json exactly.
@@ -145,6 +158,7 @@ constexpr char TAG_PUB[] = "PUB";
 constexpr char TAG_HIST[] = "HIST";
 constexpr char TAG_CMD[] = "CMD";
 constexpr char TAG_CLI[] = "CLI";
+constexpr char TAG_PAIR[] = "PAIR";
 constexpr char TAG_HEALTH[] = "HEALTH";
 
 enum SensorId : uint8_t {
@@ -235,6 +249,16 @@ FirebaseData firebaseData;
 FirebaseAuth auth;
 FirebaseConfig firebaseConfig;
 
+// Saved by the setup portal (NVS). The pairing code the app shows IS the device
+// id: it names /devices/<id> in Firebase, so the app reads this device by code.
+String wifiSsid;
+String wifiPassword;
+String deviceId;
+Preferences prefs;
+WebServer portal(80);
+DNSServer dnsServer;
+bool portalActive = false;
+
 String basePath;  // computed once in setup(); avoids rebuilding it every cycle
 
 unsigned long lastLivePublish = 0;
@@ -250,6 +274,10 @@ unsigned long lastNtpWarn = 0;
 char lastHistorySlot[24] = "";
 bool historySlotProbed = false;
 const char *historyState = "withheld";
+
+uint32_t backfillCursor = 0;  // UTC seconds; SD rows at or before it are already handled
+time_t backfillHour = 0;      // hour the last backfill scan ran in; a new hour rescans
+bool backfillDone = false;
 
 bool historyEnabled = true;
 bool historyLocalOverride = false;  // set by the console `history` command
@@ -938,6 +966,142 @@ void logReadingToSd(const SensorData &reading) {
   file.close();
 }
 
+// ---------------------------------------------------------------------------
+// N2b. Backfill: upload the hourly samples that were only logged to SD while
+//      offline. Same slot keys and validity rule as publishMonthlyHistory, so it
+//      is idempotent and cannot double-count an hour the live path already wrote.
+// ---------------------------------------------------------------------------
+constexpr time_t BACKFILL_MAX_AGE_SECONDS = 7L * 86400L;  // older SD rows stay SD-only
+constexpr uint8_t BACKFILL_OPS_PER_CYCLE = 8;             // Firebase reads+writes per 15 s cycle
+
+// Days-from-civil (H. Hinnant); newlib's timegm is not reliable on ESP32.
+time_t civilToEpoch(int y, int m, int d, int hh, int mm, int ss) {
+  y -= m <= 2;
+  const long era = (y >= 0 ? y : y - 399) / 400;
+  const long yoe = y - era * 400;
+  const long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+  const long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return static_cast<time_t>((era * 146097 + doe - 719468) * 86400L + hh * 3600L + mm * 60L + ss);
+}
+
+// Splits one CSV row in place into 13 columns; false for a header or short row.
+bool splitSdRow(char *line, char *cols[13]) {
+  uint8_t n = 0;
+  for (char *token = line; n < 13;) {
+    cols[n++] = token;
+    char *comma = strchr(token, ',');
+    if (!comma) break;
+    *comma = '\0';
+    token = comma + 1;
+  }
+  return n == 13;
+}
+
+void saveBackfillCursor() {
+  prefs.begin("cropcast", false);
+  prefs.putUInt("bf", backfillCursor);
+  prefs.end();
+}
+
+// Call only while online. Stops after BACKFILL_OPS_PER_CYCLE and resumes next
+// cycle, so a long outage never starves the live publish.
+// ponytail: rescans the day file from the top each call (no byte offset), fine at
+// ~0.5 MB per day; add a stored file offset if the log interval gets much shorter.
+void backfillSdHistory() {
+  if (!CROPCAST_SD_ENABLED || !historyEnabled || !timeSynced()) return;
+  const time_t now = time(nullptr);
+  const time_t currentHour = now - now % 3600;  // the live path owns this hour
+  if (currentHour != backfillHour) {
+    backfillHour = currentHour;
+    backfillDone = false;
+  }
+  if (backfillDone) return;
+  if (!sdReady) {
+    sdReady = SD.begin(SD_CARD_CS);
+    if (!sdReady) return;
+  }
+
+  time_t from = backfillCursor;
+  if (from < now - BACKFILL_MAX_AGE_SECONDS) from = now - BACKFILL_MAX_AGE_SECONDS;
+  uint8_t ops = 0;
+  time_t slotHandled = 0;
+
+  const time_t firstDay = (from + SD_UTC_OFFSET_SECONDS) / 86400L * 86400L;
+  for (time_t day = firstDay; day <= now + SD_UTC_OFFSET_SECONDS; day += 86400L) {
+    struct tm local;
+    gmtime_r(&day, &local);
+    char filePath[40];
+    strftime(filePath, sizeof(filePath), "/soil_data/%Y-%m/%Y-%m-%d.csv", &local);
+    File file = SD.open(filePath, FILE_READ);
+    if (!file) continue;
+
+    while (file.available()) {
+      char line[200];
+      const size_t length = file.readBytesUntil('\n', line, sizeof(line) - 1);
+      line[length] = '\0';
+      char *cols[13];
+      int y, mo, d, h, mi, s;
+      if (!splitSdRow(line, cols) ||
+          sscanf(cols[0], "%d-%d-%d %d:%d:%d", &y, &mo, &d, &h, &mi, &s) != 6) {
+        continue;  // header or torn row
+      }
+      const time_t utc = civilToEpoch(y, mo, d, h, mi, s) - SD_UTC_OFFSET_SECONDS;
+      if (utc <= from) continue;
+      const time_t slot = utc - utc % 3600;
+      if (slot >= currentHour) {
+        file.close();
+        backfillDone = true;
+        return;
+      }
+      if (slot == slotHandled) continue;
+
+      // Same rule as the live path: every scored field must be a real reading.
+      static const uint8_t required[] = {1, 4, 5, 6, 7, 11, 12};
+      bool complete = true;
+      for (const uint8_t col : required) complete = complete && cols[col][0] != '\0';
+      if (!complete) continue;
+
+      if (ops >= BACKFILL_OPS_PER_CYCLE) {
+        file.close();
+        return;  // resume next cycle from the saved cursor
+      }
+      const uint64_t slotMs = static_cast<uint64_t>(slot) * 1000ULL;
+      char slotKey[24];
+      utcHourSlotKey(slotMs, slotKey, sizeof(slotKey));
+      const String path = deviceBasePath() + "/readings/monthly/" + utcMonthKey(slotMs) + "/" + slotKey;
+
+      ops++;
+      bool stored = Firebase.RTDB.pathExisted(&firebaseData, path);
+      if (!stored) {
+        FirebaseJson json;
+        json.set("temperature", atof(cols[11]));
+        json.set("humidity", atof(cols[12]));
+        json.set("soilMoisture", atof(cols[1]));
+        json.set("soilPh", atof(cols[4]));
+        json.set("nitrogen", atoi(cols[5]));
+        json.set("phosphorus", atoi(cols[6]));
+        json.set("potassium", atoi(cols[7]));
+        json.set("lightIntensity", atof(cols[10]));  // empty cell reads as 0, like live
+        json.set("timestamp", static_cast<double>(utc) * 1000.0);
+        json.set("electricalConductivity", atoi(cols[3]));
+        ops++;
+        stored = Firebase.RTDB.setJSON(&firebaseData, path, &json);
+        if (stored) LOG_I(TAG_HIST, "backfilled %s from SD", path.c_str());
+        else logFirebaseError(TAG_HIST, "backfill upload");
+      }
+      if (!stored) {  // offline again or rejected: keep the cursor, retry later
+        file.close();
+        return;
+      }
+      slotHandled = slot;
+      backfillCursor = static_cast<uint32_t>(slot + 3599);
+      saveBackfillCursor();
+    }
+    file.close();
+  }
+  backfillDone = true;
+}
+
 // Runs whether or not the network is up, so the SD card keeps logging offline.
 void runSensorCycle(bool online) {
   SensorData reading;
@@ -945,6 +1109,7 @@ void runSensorCycle(bool online) {
   logReadingToSd(reading);
 
   if (online) {
+    backfillSdHistory();
     publishCurrentReading(reading);
     publishMonthlyHistory(reading);
     // Always last and always unconditional: status must stay fresh even when
@@ -997,6 +1162,56 @@ void checkRestartCommand() {
 }
 
 // ---------------------------------------------------------------------------
+// N3. Pairing config (NVS)
+// ---------------------------------------------------------------------------
+void loadPairing() {
+  prefs.begin("cropcast", true);
+  wifiSsid = prefs.getString("ssid", "");
+  wifiPassword = prefs.getString("pass", "");
+  deviceId = prefs.getString("dev", "");
+  backfillCursor = prefs.getUInt("bf", 0);
+  prefs.end();
+}
+
+void savePairing(const String &ssid, const String &password, const String &code) {
+  prefs.begin("cropcast", false);
+  prefs.putString("ssid", ssid);
+  prefs.putString("pass", password);
+  prefs.putString("dev", code);
+  prefs.putUInt("bf", 0);  // new device path: its history starts empty
+  prefs.end();
+  backfillCursor = 0;
+}
+
+// Becomes a Firebase key, so only characters that are legal there and in a URL.
+bool validPairingCode(const String &code) {
+  if (code.length() < 4 || code.length() > 40) return false;
+  for (size_t index = 0; index < code.length(); index++) {
+    const char c = code[index];
+    if (!isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') return false;
+  }
+  return true;
+}
+
+// Forget Wi-Fi + code, then reboot: with nothing saved, setup() opens the portal.
+void restartForPairing(const char *reason) {
+  prefs.begin("cropcast", false);
+  prefs.clear();
+  prefs.end();
+  gracefulRestart(reason);
+}
+
+void servicePairButton() {
+  static unsigned long pressedSince = 0;
+  if (digitalRead(PAIR_BUTTON_PIN) == HIGH) {
+    pressedSince = 0;
+    return;
+  }
+  if (pressedSince == 0) pressedSince = millis();
+  if (millis() - pressedSince >= PAIR_BUTTON_HOLD_MS) restartForPairing("BOOT button held");
+}
+
+// ---------------------------------------------------------------------------
 // O. Serial console
 // ---------------------------------------------------------------------------
 void cmdHelp(const char *args);
@@ -1013,6 +1228,7 @@ void cmdSensors(const char *args);
 void cmdLog(const char *args);
 void cmdHistory(const char *args);
 void cmdReboot(const char *args);
+void cmdPair(const char *args);
 
 const ConsoleCommand CONSOLE_COMMANDS[] = {
     {"help", cmdHelp, "help", "list commands"},
@@ -1028,6 +1244,7 @@ const ConsoleCommand CONSOLE_COMMANDS[] = {
     {"sensors", cmdSensors, "sensors [<name> on|off]", "list or toggle expected channels"},
     {"log", cmdLog, "log [level]", "show or set verbosity (off..trace)"},
     {"history", cmdHistory, "history [on|off]", "local override of cloudHistoryEnabled"},
+    {"pair", cmdPair, "pair", "forget Wi-Fi + pairing code, restart into the setup portal"},
     {"reboot", cmdReboot, "reboot", "mark offline, then restart"}};
 constexpr size_t CONSOLE_COMMAND_COUNT = sizeof(CONSOLE_COMMANDS) / sizeof(CONSOLE_COMMANDS[0]);
 
@@ -1122,7 +1339,8 @@ void cmdStatus(const char *args) {
   (void)args;
   char uptime[24];
   formatUptime(millis(), uptime, sizeof(uptime));
-  Serial.printf("firmware   : %s, device %s\n", FIRMWARE_VERSION, DEVICE_ID);
+  Serial.printf("firmware   : %s, device %s\n", FIRMWARE_VERSION,
+                deviceId.isEmpty() ? "(not paired)" : deviceId.c_str());
   Serial.printf("uptime     : %s\n", uptime);
   Serial.printf("heap       : %u free, %u largest block\n", ESP.getFreeHeap(),
                 ESP.getMaxAllocHeap());
@@ -1383,6 +1601,11 @@ void cmdReboot(const char *args) {
   gracefulRestart("reboot requested from the serial console");
 }
 
+void cmdPair(const char *args) {
+  (void)args;
+  restartForPairing("re-pairing requested from the serial console");
+}
+
 // ---------------------------------------------------------------------------
 // Q. Network
 // ---------------------------------------------------------------------------
@@ -1410,7 +1633,7 @@ const char *wifiStatusLabel(wl_status_t status) {
 }
 
 void connectWiFi() {
-  if (WiFi.status() == WL_CONNECTED) return;
+  if (portalActive || wifiSsid.isEmpty() || WiFi.status() == WL_CONNECTED) return;
   if (lastWiFiAttempt != 0 && millis() - lastWiFiAttempt < WIFI_RETRY_INTERVAL_MS) return;
 
   if (lastWiFiAttempt != 0) {
@@ -1418,9 +1641,220 @@ void connectWiFi() {
     LOG_W(TAG_WIFI, "retry after status %d (%s)", status, wifiStatusLabel(status));
   }
   lastWiFiAttempt = millis();
-  LOG_I(TAG_WIFI, "connecting to %s", WIFI_SSID);
+  LOG_I(TAG_WIFI, "connecting to %s", wifiSsid.c_str());
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+}
+
+// ---------------------------------------------------------------------------
+// Q2. Setup portal: the ESP32 opens an access point "CropCast-XXXX"; the phone
+//     joins it, a captive page asks for the home Wi-Fi and the pairing code the
+//     app shows (Settings > Pair a device), then the device reboots onto that
+//     Wi-Fi and publishes under /devices/<pairing code>.
+// ---------------------------------------------------------------------------
+String htmlEscape(const String &text) {
+  String out;
+  for (size_t index = 0; index < text.length(); index++) {
+    switch (text[index]) {
+      case '&': out += "&amp;"; break;
+      case '<': out += "&lt;"; break;
+      case '>': out += "&gt;"; break;
+      case '"': out += "&quot;"; break;
+      case '\'': out += "&#39;"; break;
+      default: out += text[index];
+    }
+  }
+  return out;
+}
+
+// Look and feel follow the Android app: CropGreen #22D477 / DeepGreen #0B5537, light and dark.
+const char PORTAL_HEAD[] = R"HTML(<!doctype html><html lang=en><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>CropCast setup</title>
+<style>
+:root{--bg:#f5f9f1;--card:#fff;--text:#153827;--sub:#718172;--line:#dde8d7;--green:#22d477;--deep:#0b5537}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1711;--card:#15221a;--text:#e2eee6;--sub:#a8b9ad;--line:#3a4d40;--deep:#8eddb0}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,sans-serif}
+main{max-width:440px;margin:0 auto;padding:22px 16px 40px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.logo{width:46px;height:48px;border-radius:14px;object-fit:cover}
+header b{display:block;font-size:21px;font-weight:800}header small{color:var(--sub)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:6px 18px 20px}
+label{display:block;font-weight:700;font-size:14px;margin:16px 0 6px}
+select,input{width:100%;padding:13px 14px;font-size:16px;border-radius:14px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+select:focus,input:focus{outline:2px solid var(--green);border-color:transparent}
+input[hidden]{display:none}#manual{margin-top:8px}
+.pw{position:relative}.pw input{padding-right:50px}
+.eye{position:absolute;right:3px;top:3px;width:46px;height:46px;border:0;background:none;color:var(--sub);cursor:pointer}
+.eye svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pin{font-size:30px;font-weight:800;letter-spacing:.35em;text-align:center;font-family:ui-monospace,monospace}
+.go{width:100%;margin-top:22px;padding:15px;border:0;border-radius:14px;background:var(--green);color:#052015;font-size:16px;font-weight:800}
+.go:disabled{opacity:.6}
+.hint{color:var(--sub);font-size:13px;margin:6px 0 0}.hint a{color:var(--deep);font-weight:700}
+.msg{margin:16px 0 0;padding:12px 14px;border-radius:14px;font-weight:600}
+.err{background:#fde8e8;color:#9b2c2c}.ok{background:#d9f7ca;color:#0b5537}
+@media(prefers-color-scheme:dark){.err{background:#3a1f1f;color:#ffb4ab}.ok{background:#12452f;color:#b9f6d2}}
+</style><body><main>
+<header><img class=logo src=/logo.jpg alt=CropCast><div><b>CropCast</b><small>Sensor setup</small></div></header>
+<div class=card>)HTML";
+
+const char PORTAL_FORM_PASS[] = R"HTML(
+<label for=pass>Wi-Fi password</label>
+<div class=pw><input id=pass name=pass type=password maxlength=63 autocomplete=off autocapitalize=off>
+<button class=eye id=eye type=button aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+<p class=hint>Leave empty for an open network.</p>
+<label for=code>Pairing PIN from the CropCast app</label>
+<input class=pin id=code name=code required maxlength=40 inputmode=numeric autocomplete=off value=")HTML";
+
+const char PORTAL_TAIL_FORM[] = R"HTML(">
+<button class=go id=go>Connect</button></form></div></main>
+<script>
+var ON='<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+var OFF='<svg viewBox="0 0 24 24"><path d="M17.9 17.9A10.9 10.9 0 0112 20C5 20 1 12 1 12a18.5 18.5 0 015.1-5.9M9.9 4.2A9.1 9.1 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.2 3.2M1 1l22 22"/></svg>';
+var s=document.getElementById('ssid'),m=document.getElementById('manual'),p=document.getElementById('pass'),e=document.getElementById('eye');
+function sync(){m.hidden=s.value!=='__other__';m.required=!m.hidden}
+s.onchange=sync;sync();
+e.onclick=function(){var h=p.type==='password';p.type=h?'text':'password';e.innerHTML=h?OFF:ON;e.setAttribute('aria-label',h?'Hide password':'Show password')};
+document.forms[0].onsubmit=function(){var b=document.getElementById('go');b.disabled=true;b.textContent='Connecting... up to 15 seconds'};
+</script>)HTML";
+
+const char PORTAL_TAIL_MSG[] = "</div></main>";
+
+// Nearby networks, found when the portal opens and again on "Rescan".
+constexpr uint8_t PORTAL_MAX_NETWORKS = 20;
+String portalSsid[PORTAL_MAX_NETWORKS];
+int32_t portalRssi[PORTAL_MAX_NETWORKS];
+bool portalSecure[PORTAL_MAX_NETWORKS];
+uint8_t portalNetworkCount = 0;
+
+void scanPortalNetworks() {
+  portalNetworkCount = 0;
+  const int found = WiFi.scanNetworks();
+  for (int index = 0; index < found && portalNetworkCount < PORTAL_MAX_NETWORKS; index++) {
+    const String name = WiFi.SSID(index);
+    if (name.isEmpty()) continue;  // hidden networks: use "Other network"
+    bool duplicate = false;
+    for (uint8_t known = 0; known < portalNetworkCount; known++) duplicate |= portalSsid[known] == name;
+    if (duplicate) continue;
+    portalSsid[portalNetworkCount] = name;
+    portalRssi[portalNetworkCount] = WiFi.RSSI(index);
+    portalSecure[portalNetworkCount] = WiFi.encryptionType(index) != WIFI_AUTH_OPEN;
+    portalNetworkCount++;
+  }
+  WiFi.scanDelete();
+}
+
+const char *signalBars(int32_t rssi) {
+  if (rssi > -55) return "\u2582\u2584\u2586\u2588";
+  if (rssi > -67) return "\u2582\u2584\u2586";
+  if (rssi > -77) return "\u2582\u2584";
+  return "\u2582";
+}
+
+// The setup form, optionally with a coloured notice on top and the last entries kept.
+void sendPortalForm(const String &notice, bool noticeIsError, const String &selectedSsid,
+                    const String &code) {
+  String html = PORTAL_HEAD;
+  if (notice.length() > 0) {
+    html += String("<div class='msg ") + (noticeIsError ? "err" : "ok") + "'>" + notice + "</div>";
+  }
+  html += F("<form method=post action=/save><label for=ssid>Wi-Fi network</label><select id=ssid name=ssid>");
+  for (uint8_t index = 0; index < portalNetworkCount; index++) {
+    html += String("<option value=\"") + htmlEscape(portalSsid[index]) + "\"" +
+            (portalSsid[index] == selectedSsid ? " selected" : "") + ">" + htmlEscape(portalSsid[index]) +
+            "  " + signalBars(portalRssi[index]) + (portalSecure[index] ? " \xF0\x9F\x94\x92" : "") +
+            "</option>";
+  }
+  html += F("<option value=__other__>Other network...</option></select>"
+            "<input id=manual name=manual maxlength=32 placeholder=\"Network name\" autocapitalize=off hidden>"
+            "<p class=hint>2.4 GHz only. <a href=\"/?rescan=1\">Rescan networks</a></p>");
+  html += PORTAL_FORM_PASS;
+  html += htmlEscape(code);
+  html += PORTAL_TAIL_FORM;
+  portal.send(200, "text/html", html);
+}
+
+void handlePortalRoot() {
+  if (portal.hasArg("rescan")) scanPortalNetworks();
+  sendPortalForm("", false, "", "");
+}
+
+void handlePortalSave() {
+  String ssid = portal.arg("ssid");
+  if (ssid == "__other__") ssid = portal.arg("manual");
+  String password = portal.arg("pass");
+  String code = portal.arg("code");
+  ssid.trim();
+  code.trim();
+  code.toLowerCase();  // the app generates lowercase; a phone keyboard may capitalise
+  if (ssid.isEmpty() || ssid.length() > 32 || password.length() > 63) {
+    sendPortalForm("Wi-Fi name or password is invalid.", true, ssid, code);
+    return;
+  }
+  if (!validPairingCode(code)) {
+    sendPortalForm("The PIN must be 4-40 letters, digits, - or _.", true, ssid, code);
+    return;
+  }
+
+  // Prove the credentials before saving, so a typo cannot strand the device.
+  LOG_I(TAG_PAIR, "testing Wi-Fi %s", ssid.c_str());
+  WiFi.begin(ssid.c_str(), password.c_str());
+  const unsigned long started = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - started < WIFI_TEST_TIMEOUT_MS) delay(250);
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.disconnect();
+    sendPortalForm(String("Could not join <b>") + htmlEscape(ssid) +
+                       "</b>. Check the password and that it is a 2.4 GHz network.",
+                   true, ssid, code);
+    return;
+  }
+
+  // Save first: joining may move the AP's channel and drop this very response.
+  savePairing(ssid, password, code);
+  LOG_I(TAG_PAIR, "saved; paired as %s, restarting", code.c_str());
+  portal.send(200, "text/html",
+              String(PORTAL_HEAD) +
+                  F("<div class='msg ok'>Connected! The sensor is restarting. Go back to the CropCast app; "
+                    "pairing finishes when the device shows online.</div>") +
+                  PORTAL_TAIL_MSG);
+  delay(1500);
+  ESP.restart();
+}
+
+void startPortal() {
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  LOG_I(TAG_PAIR, "scanning Wi-Fi networks for the setup page");
+  scanPortalNetworks();
+
+  char apName[24];
+  // ponytail: label only, from the eFuse MAC bytes in storage order; unique per chip.
+  snprintf(apName, sizeof(apName), "CropCast-%04X",
+           static_cast<unsigned>((ESP.getEfuseMac() >> 32) & 0xFFFF));
+  WiFi.mode(WIFI_AP_STA);
+  const bool secured = strlen(CROPCAST_AP_PASSWORD) >= 8;
+  WiFi.softAP(apName, secured ? CROPCAST_AP_PASSWORD : nullptr);
+  dnsServer.start(53, "*", WiFi.softAPIP());  // captive portal: every name -> us
+  portal.on("/", HTTP_GET, handlePortalRoot);
+  portal.on("/save", HTTP_POST, handlePortalSave);
+  portal.on("/logo.jpg", HTTP_GET, []() {
+    portal.sendHeader("Cache-Control", "max-age=86400");
+    portal.send_P(200, "image/jpeg", reinterpret_cast<const char *>(PORTAL_LOGO_JPG),
+                  sizeof(PORTAL_LOGO_JPG));
+  });
+  portal.onNotFound([]() {  // phones probe /generate_204 etc.; bounce them to the form
+    portal.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
+    portal.send(302, "text/plain", "");
+  });
+  portal.begin();
+  portalActive = true;
+  LOG_I(TAG_PAIR, "setup portal open: join Wi-Fi \"%s\"%s, then browse to http://%s/", apName,
+        secured ? " (WPA2)" : " (open)", WiFi.softAPIP().toString().c_str());
+}
+
+void servicePortal() {
+  dnsServer.processNextRequest();
+  portal.handleClient();
 }
 
 bool firebaseConfigurationReady() {
@@ -1513,7 +1947,7 @@ void printBootBanner() {
                 ESP.getFlashChipSize() / (1024 * 1024), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   Serial.printf(" mac        : %s\n", WiFi.macAddress().c_str());
   Serial.printf(" reset      : %s\n", resetReasonName());
-  Serial.printf(" device id  : %s\n", DEVICE_ID);
+  Serial.printf(" device id  : %s\n", deviceId.isEmpty() ? "(not paired)" : deviceId.c_str());
   Serial.printf(" database   : %s\n", FIREBASE_DATABASE_URL);
   Serial.printf(" api key    : %s\n", maskedKey);
   Serial.printf(" log level  : %s (compiled ceiling %s)\n", logLevelName(runtimeLogLevel),
@@ -1586,9 +2020,11 @@ void probeSensorsAtBoot() {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  loadPairing();
+  pinMode(PAIR_BUTTON_PIN, INPUT_PULLUP);
   printBootBanner();
 
-  basePath = String("/devices/") + DEVICE_ID;
+  basePath = deviceId.isEmpty() ? String() : String("/devices/") + deviceId;
 
   dht.begin();
   Wire.begin(21, 22);  // SDA, SCL
@@ -1603,6 +2039,12 @@ void setup() {
   rs485.begin(SOIL_BAUD, SERIAL_8N1, RS485_RX, RS485_TX);
 
   probeSensorsAtBoot();
+
+  // Nothing saved yet (or `pair` / BOOT-hold wiped it): pair via the portal.
+  if (wifiSsid.isEmpty() || deviceId.isEmpty()) {
+    startPortal();
+    return;
+  }
 
   connectWiFi();
   const unsigned long connectionStarted = millis();
@@ -1633,6 +2075,8 @@ void setup() {
 void loop() {
   // First, so the console keeps working with Wi-Fi or Firebase down.
   serviceConsole();
+  servicePairButton();
+  if (portalActive) servicePortal();  // connectWiFi() is a no-op while the portal is up
 
   connectWiFi();
   startFirebaseIfReady();
