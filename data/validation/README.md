@@ -14,11 +14,11 @@ engine runs:
 | Hostile farms | 1,700 | Always hotter or colder than the crop's absolute limits → the crop scores 0 |
 | Random farms vs an oracle | 3,000 | An independent month-by-month check of the raw FAO ranges agrees with the engine on every "ideal" and "impossible" crop; a wrong pH costs at most 20 points |
 | Missing data | 32 combinations | Any mix of missing climate, forecast, soil map and probe still gives scores in 0-100 |
-| Monotonic temperature | 17 crops × 41 steps | Moving temperature toward the optimum never lowers the score (up to 24 °C for disease-prone crops, where wet-season loss starts on purpose) |
+| Monotonic temperature | 25 crops × 41 steps | Moving temperature toward the optimum never lowers the score (up to 24 °C for disease-prone crops, where wet-season loss starts on purpose) |
 
 ## 2. Where the Philippines really grows each crop (`FarmRealWorldValidationTest`)
 
-Ground truth is official **PSA OpenSTAT** production, 2021-2025 mean, for all 17
+Ground truth is official **PSA OpenSTAT** production, 2021-2025 mean, for all 25
 crops in every province (tables `0082E4EVCP3` and `0012E4EVCP0`). Each province
 is placed at its OpenStreetMap label point and given what the app would download
 there: NASA POWER normals, Open-Meteo elevation and ISRIC SoilGrids soil. A crop
@@ -80,6 +80,14 @@ farms with an ideal crop its top pick is always an ideal crop.
 | Ampalaya | 100 % | 5/5 | Pampanga 86, Quezon 79, Nueva Ecija 84, Bulacan 86, Batangas 85 |
 | Sitaw | 100 % | 5/5 | Bulacan 96, Nueva Ecija 96, Pangasinan 100, Nueva Vizcaya 97, Isabela 95 |
 | Kalabasa | 100 % | 5/5 | Quezon 98, Albay 98, Nueva Ecija 98, Nueva Vizcaya 100, Bukidnon 98 |
+| Chili | 100 % | 5/5 | Quezon 98, Davao Oriental 91, Albay 98, Lanao del Norte 93, Pangasinan 86 |
+| Onion | 73 % | 3/5 | Nueva Ecija 73, Occidental Mindoro 43, Ilocos Sur 46, Ilocos Norte 62, Pangasinan 58 |
+| Garlic | 100 % | 5/5 | Ilocos Norte 97, Nueva Ecija 98, Batanes 100, Nueva Vizcaya 92, Occidental Mindoro 100 |
+| Mungbean | 100 % | 5/5 | Tarlac 92, Pangasinan 92, Ilocos Norte 91, Isabela 98, Maguindanao 96 |
+| Peanut | 100 % | 5/5 | Pangasinan 95, La Union 96, Ilocos Sur 96, Lanao del Norte 92, Cagayan 100 |
+| Ginger | 99 % | 5/5 | Nueva Vizcaya 89, Lanao del Norte 85, Quezon 84, Cagayan 84, Lanao del Sur 88 |
+| Gabi | 100 % | 5/5 | Agusan del Sur 86, Isabela 92, Northern Samar 92, Samar 93, Leyte 88 |
+| Patola | 100 % | 5/5 | Cagayan 88, Quezon 88, Nueva Ecija 86, Ilocos Norte 86, Pangasinan 86 |
 
 For the crops that only some provinces grow, producers outscore non-producers
 (AUC): potato 0.69, cabbage 0.78, lettuce 0.57. The test requires at least 80 %
@@ -90,6 +98,15 @@ Known limits:
 - **Spinach:** CropCast models true spinach (*Spinacia oleracea*, which dies above
   27 °C). PSA's lowland "spinach" in Capiz or Isabela is a different, heat-tolerant
   leafy green. The engine scores Benguet, where true spinach grows, at 77.
+- **Onion:** ECOCROP's temperate bulb onion tops out at 30 °C and scored 61 % of production,
+  so onion uses ECOCROP's shallot row (PSA lists red shallot, Sibuyas Tagalog), which reaches
+  73 %. Philippine onions are short-day cultivars grown in the cool dry season; the engine still
+  under-rates Occidental Mindoro (43) and Ilocos Sur (46). Its test floor is 70 %, not 80 %.
+- **New crops' fertilizer plan:** chili, onion, garlic, mungbean, peanut, ginger, gabi and patola
+  have no verified per-hectare rate in the repository, so they get a pH plan only. Salinity
+  data (FAO) exist only for chili, onion and peanut.
+- **Harvest season:** garlic (−0.36), mungbean (−0.64), peanut (−0.26) and ginger (−0.27) correlate
+  negatively under rain-fed scoring; they turn positive when irrigated except ginger (−0.48).
 - **One point per province:** each province is scored at its label point. Highland
   production inside mostly lowland provinces is missed, e.g. potato on Mt. Apo
   (Davao del Sur 41) and lettuce around Tagaytay (Cavite 36).

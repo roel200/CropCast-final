@@ -46,6 +46,14 @@ CROPS = {
     "Ampalaya": ("Ampalaya fruit [Bitter gourd]", "0032M4AFN05", "Ampalaya fruit [Bitter gourd]"),
     "Sitaw": ("Sitao [Stringbeans]", "0032M4AFN03", "Sitao [Stringbeans]"),
     "Kalabasa": ("Squash fruit", "0032M4AFN05", "Squash fruit"),
+    "Chili": ("Chili pepper fruit (Siling labuyo)", "0032M4AFN04", "Chili pepper fruit (Siling labuyo)"),
+    "Onion": ("Onion, mature bulb", "0032M4AFN04", "Onion, red creole (Bermuda red)"),
+    "Garlic": ("Garlic, dried bulb", "0032M4AFN04", "Garlic, dried bulb"),
+    "Mungbean": ("Mongo [Mungbean]", "0032M4AFN03", "Mongo [Mungbean], green, shiny"),
+    "Peanut": ("Peanut, with shell, dry", "0032M4AFN03", "Peanut, with shell, dry"),
+    "Ginger": ("Ginger", "0032M4AFN04", "Ginger, Native"),
+    "Gabi": ("Gabi [Taro]", "0032M4AFN02", "Gabi for sinigang, Tagalog [Taro]"),
+    "Patola": ("Patola", "0032M4AFN05", "Patola, Native"),
 }
 
 

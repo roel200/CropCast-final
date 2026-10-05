@@ -80,7 +80,7 @@ The firmware wiring defaults are DHT11 GPIO 4, SN-3002 7-in-1 soil probe through
 
 ## Crop recommendation engine
 
-The main recommendation (`FarmSuitabilityEngine`) ranks 17 crops for the farm: the original 12 plus pechay, kangkong, ampalaya, sitaw and kalabasa. It ranks them for planting this month, gives each an FAO suitability class, and shows the best months to plant. Temperature and rain follow FAO's ECOCROP model exactly as its reference implementation (R package Recocrop) computes it: monthly climate is interpolated to half-months, each half-month is scored on the crop's trapezoid (0 outside the absolute range, 100 inside the optimal range), the worst half-month over the growing season counts, and ECOCROP's crop-cycle rain totals are converted to monthly limits.
+The main recommendation (`FarmSuitabilityEngine`) ranks 25 crops for the farm: the original 12 plus pechay, kangkong, ampalaya, sitaw, kalabasa, chili, onion, garlic, mungbean, peanut, ginger, gabi and patola. The newest eight have no verified fertilizer rates, so they get a pH plan only, and onion is the weakest fit (see data/validation/README.md). It ranks them for planting this month, gives each an FAO suitability class, and shows the best months to plant. Temperature and rain follow FAO's ECOCROP model exactly as its reference implementation (R package Recocrop) computes it: monthly climate is interpolated to half-months, each half-month is scored on the crop's trapezoid (0 outside the absolute range, 100 inside the optimal range), the worst half-month over the growing season counts, and ECOCROP's crop-cycle rain totals are converted to monthly limits.
 
 | Factor | Role | Data source |
 |---|---|---|

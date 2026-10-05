@@ -1,0 +1,404 @@
+{
+  "seed": 2026,
+  "units": {
+    "nitrogen/phosphorus/potassium": "mg/kg",
+    "temperature": "C",
+    "humidity": "%",
+    "soilMoisture": "%",
+    "lightIntensity": "lux",
+    "soilPh": "pH"
+  },
+  "location": "Iloilo, Philippines (tropical lowland)",
+  "cases": [
+    {
+      "id": "case-01",
+      "reading": {
+        "nitrogen": 17,
+        "phosphorus": 75,
+        "potassium": 107,
+        "soilPh": 7.5,
+        "temperature": 19.8,
+        "humidity": 52,
+        "soilMoisture": 60,
+        "lightIntensity": 590.0
+      }
+    },
+    {
+      "id": "case-02",
+      "reading": {
+        "nitrogen": 110,
+        "phosphorus": 82,
+        "potassium": 151,
+        "soilPh": 7.2,
+        "temperature": 31.5,
+        "humidity": 72,
+        "soilMoisture": 33,
+        "lightIntensity": 630.0
+      }
+    },
+    {
+      "id": "case-03",
+      "reading": {
+        "nitrogen": 16,
+        "phosphorus": 119,
+        "potassium": 95,
+        "soilPh": 7.4,
+        "temperature": 30.3,
+        "humidity": 77,
+        "soilMoisture": 31,
+        "lightIntensity": 380.0
+      }
+    },
+    {
+      "id": "case-04",
+      "reading": {
+        "nitrogen": 137,
+        "phosphorus": 135,
+        "potassium": 166,
+        "soilPh": 8.0,
+        "temperature": 27.2,
+        "humidity": 44,
+        "soilMoisture": 41,
+        "lightIntensity": 590.0
+      }
+    },
+    {
+      "id": "case-05",
+      "reading": {
+        "nitrogen": 41,
+        "phosphorus": 69,
+        "potassium": 180,
+        "soilPh": 7.0,
+        "temperature": 28.4,
+        "humidity": 41,
+        "soilMoisture": 68,
+        "lightIntensity": 450.0
+      }
+    },
+    {
+      "id": "case-06",
+      "reading": {
+        "nitrogen": 59,
+        "phosphorus": 61,
+        "potassium": 122,
+        "soilPh": 6.2,
+        "temperature": 20.1,
+        "humidity": 68,
+        "soilMoisture": 71,
+        "lightIntensity": 620.0
+      }
+    },
+    {
+      "id": "case-07",
+      "reading": {
+        "nitrogen": 69,
+        "phosphorus": 133,
+        "potassium": 57,
+        "soilPh": 6.0,
+        "temperature": 34.7,
+        "humidity": 66,
+        "soilMoisture": 54,
+        "lightIntensity": 220.0
+      }
+    },
+    {
+      "id": "case-08",
+      "reading": {
+        "nitrogen": 31,
+        "phosphorus": 23,
+        "potassium": 15,
+        "soilPh": 7.0,
+        "temperature": 34.0,
+        "humidity": 46,
+        "soilMoisture": 62,
+        "lightIntensity": 530.0
+      }
+    },
+    {
+      "id": "case-09",
+      "reading": {
+        "nitrogen": 67,
+        "phosphorus": 37,
+        "potassium": 182,
+        "soilPh": 6.7,
+        "temperature": 26.2,
+        "humidity": 66,
+        "soilMoisture": 85,
+        "lightIntensity": 890.0
+      }
+    },
+    {
+      "id": "case-10",
+      "reading": {
+        "nitrogen": 76,
+        "phosphorus": 83,
+        "potassium": 139,
+        "soilPh": 5.6,
+        "temperature": 32.4,
+        "humidity": 68,
+        "soilMoisture": 51,
+        "lightIntensity": 820.0
+      }
+    },
+    {
+      "id": "case-11",
+      "reading": {
+        "nitrogen": 61,
+        "phosphorus": 46,
+        "potassium": 59,
+        "soilPh": 4.6,
+        "temperature": 29.8,
+        "humidity": 73,
+        "soilMoisture": 49,
+        "lightIntensity": 570.0
+      }
+    },
+    {
+      "id": "case-12",
+      "reading": {
+        "nitrogen": 69,
+        "phosphorus": 134,
+        "potassium": 57,
+        "soilPh": 6.2,
+        "temperature": 27.2,
+        "humidity": 85,
+        "soilMoisture": 76,
+        "lightIntensity": 590.0
+      }
+    },
+    {
+      "id": "case-13",
+      "reading": {
+        "nitrogen": 127,
+        "phosphorus": 121,
+        "potassium": 68,
+        "soilPh": 7.7,
+        "temperature": 19.8,
+        "humidity": 78,
+        "soilMoisture": 74,
+        "lightIntensity": 560.0
+      }
+    },
+    {
+      "id": "case-14",
+      "reading": {
+        "nitrogen": 63,
+        "phosphorus": 140,
+        "potassium": 198,
+        "soilPh": 7.4,
+        "temperature": 26.6,
+        "humidity": 44,
+        "soilMoisture": 35,
+        "lightIntensity": 550.0
+      }
+    },
+    {
+      "id": "case-15",
+      "reading": {
+        "nitrogen": 14,
+        "phosphorus": 110,
+        "potassium": 87,
+        "soilPh": 6.1,
+        "temperature": 18.3,
+        "humidity": 40,
+        "soilMoisture": 59,
+        "lightIntensity": 850.0
+      }
+    },
+    {
+      "id": "case-16",
+      "reading": {
+        "nitrogen": 12,
+        "phosphorus": 116,
+        "potassium": 55,
+        "soilPh": 6.7,
+        "temperature": 31.5,
+        "humidity": 93,
+        "soilMoisture": 65,
+        "lightIntensity": 640.0
+      }
+    },
+    {
+      "id": "case-17",
+      "reading": {
+        "nitrogen": 22,
+        "phosphorus": 49,
+        "potassium": 122,
+        "soilPh": 7.2,
+        "temperature": 35.1,
+        "humidity": 67,
+        "soilMoisture": 69,
+        "lightIntensity": 290.0
+      }
+    },
+    {
+      "id": "case-18",
+      "reading": {
+        "nitrogen": 31,
+        "phosphorus": 87,
+        "potassium": 197,
+        "soilPh": 7.6,
+        "temperature": 27.1,
+        "humidity": 45,
+        "soilMoisture": 65,
+        "lightIntensity": 850.0
+      }
+    },
+    {
+      "id": "case-19",
+      "reading": {
+        "nitrogen": 110,
+        "phosphorus": 133,
+        "potassium": 66,
+        "soilPh": 5.9,
+        "temperature": 32.5,
+        "humidity": 69,
+        "soilMoisture": 30,
+        "lightIntensity": 210.0
+      }
+    },
+    {
+      "id": "case-20",
+      "reading": {
+        "nitrogen": 15,
+        "phosphorus": 129,
+        "potassium": 15,
+        "soilPh": 5.7,
+        "temperature": 24.4,
+        "humidity": 82,
+        "soilMoisture": 17,
+        "lightIntensity": 560.0
+      }
+    },
+    {
+      "id": "case-21",
+      "reading": {
+        "nitrogen": 46,
+        "phosphorus": 48,
+        "potassium": 70,
+        "soilPh": 4.9,
+        "temperature": 35.1,
+        "humidity": 71,
+        "soilMoisture": 75,
+        "lightIntensity": 310.0
+      }
+    },
+    {
+      "id": "case-22",
+      "reading": {
+        "nitrogen": 73,
+        "phosphorus": 66,
+        "potassium": 72,
+        "soilPh": 6.6,
+        "temperature": 30.2,
+        "humidity": 44,
+        "soilMoisture": 45,
+        "lightIntensity": 340.0
+      }
+    },
+    {
+      "id": "case-23",
+      "reading": {
+        "nitrogen": 129,
+        "phosphorus": 11,
+        "potassium": 114,
+        "soilPh": 7.4,
+        "temperature": 26.1,
+        "humidity": 82,
+        "soilMoisture": 29,
+        "lightIntensity": 700.0
+      }
+    },
+    {
+      "id": "case-24",
+      "reading": {
+        "nitrogen": 123,
+        "phosphorus": 23,
+        "potassium": 111,
+        "soilPh": 7.2,
+        "temperature": 27.3,
+        "humidity": 93,
+        "soilMoisture": 27,
+        "lightIntensity": 790.0
+      }
+    },
+    {
+      "id": "case-25",
+      "reading": {
+        "nitrogen": 55,
+        "phosphorus": 65,
+        "potassium": 88,
+        "soilPh": 4.8,
+        "temperature": 23.5,
+        "humidity": 59,
+        "soilMoisture": 35,
+        "lightIntensity": 550.0
+      }
+    },
+    {
+      "id": "case-26",
+      "reading": {
+        "nitrogen": 109,
+        "phosphorus": 63,
+        "potassium": 99,
+        "soilPh": 5.6,
+        "temperature": 26.7,
+        "humidity": 47,
+        "soilMoisture": 75,
+        "lightIntensity": 760.0
+      }
+    },
+    {
+      "id": "case-27",
+      "reading": {
+        "nitrogen": 114,
+        "phosphorus": 124,
+        "potassium": 51,
+        "soilPh": 7.8,
+        "temperature": 33.8,
+        "humidity": 76,
+        "soilMoisture": 46,
+        "lightIntensity": 750.0
+      }
+    },
+    {
+      "id": "case-28",
+      "reading": {
+        "nitrogen": 119,
+        "phosphorus": 99,
+        "potassium": 197,
+        "soilPh": 5.7,
+        "temperature": 20.8,
+        "humidity": 71,
+        "soilMoisture": 58,
+        "lightIntensity": 580.0
+      }
+    },
+    {
+      "id": "case-29",
+      "reading": {
+        "nitrogen": 15,
+        "phosphorus": 105,
+        "potassium": 116,
+        "soilPh": 6.5,
+        "temperature": 21.9,
+        "humidity": 56,
+        "soilMoisture": 35,
+        "lightIntensity": 590.0
+      }
+    },
+    {
+      "id": "case-30",
+      "reading": {
+        "nitrogen": 14,
+        "phosphorus": 42,
+        "potassium": 196,
+        "soilPh": 5.1,
+        "temperature": 30.3,
+        "humidity": 82,
+        "soilMoisture": 69,
+        "lightIntensity": 330.0
+      }
+    }
+  ]
+}

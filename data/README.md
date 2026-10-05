@@ -25,6 +25,31 @@ these files. `processed/` contains reproducible outputs created by
 - `app/src/main/assets/crop_economics.json` (in the app): PSA national yields and
   farmgate prices, built by `scripts/build_crop_economics.py`.
 
+## BSWM soil survey (Iloilo / Panay)
+
+- `raw/bswm/PhilSoilSeries.*`: BSWM Philippine Soil Series shapefile (539 polygons; fields
+  `SOILDESC`, `AEZ`, `SoilSeries`). Licence not stated on the BSWM download page.
+- `raw/bswm/Iloilo_soil_survey_report.pdf`: scanned Iloilo soil survey report (91 pages, no text layer).
+- `processed/bswm/iloilo_soil_survey.json`: Table 15 (p. 75) transcribed by hand: pH, N, P, K, Ca
+  per soil type. Old rapid field tests, pH to the nearest 0.5. Tables 13 (area, land use) and
+  14 (yield indices) are not transcribed.
+- `app/src/main/assets/iloilo_soil_series.json`: built by `scripts/build_iloilo_soil.py` (needs
+  `pyshp`, `shapely`). Panay-window polygons with texture class and pH. The app uses it only
+  where SoilGrids has no value (`SoilSurvey.kt`).
+
+## Every data source the app and tests use
+
+| Source | Used for | Where |
+|---|---|---|
+| NASA POWER climatology | monthly temperature, humidity, rain | live API, `FarmSiteDataRepository` |
+| Open-Meteo forecast | 16-day weather, elevation | live API |
+| ECMWF SEAS5 via Open-Meteo | seasonal rain and temperature | live API |
+| ISRIC SoilGrids | topsoil pH, clay, sand, nitrogen | live API |
+| BSWM soil series + Iloilo survey | texture and pH fallback on Panay | `app/src/main/assets/iloilo_soil_series.json` |
+| FAO ECOCROP | crop requirement ranges | `raw/ecocrop/`, `processed/ecocrop_selected.csv` |
+| PSA OpenSTAT | yields, farmgate prices, validation | `app/src/main/assets/crop_economics.json`, `validation/sites.json` |
+| ISRIC WoSIS | topsoil pH for the local model | `raw/wosis/` |
+
 ## Scientific limitations
 
 - The crop-requirements source does not state the NPK unit. Its numeric ranges

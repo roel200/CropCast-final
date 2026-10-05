@@ -44,6 +44,9 @@ VEGETABLES = {
     "Cucumber": "Cucumber", "Alugbati": "Alugbati", "Spinach": "Spinach",
     "..Pechay, native": "Pechay", "Kangkong [Swamp cabbage]": "Kangkong",
     "Ampalaya fruit [Bitter gourd]": "Ampalaya", "Sitao [Stringbeans]": "Sitaw", "Squash fruit": "Kalabasa",
+    "Chili pepper fruit (Siling labuyo)": "Chili", "Onion, mature bulb": "Onion", "Garlic, dried bulb": "Garlic",
+    "Mongo [Mungbean]": "Mungbean", "Peanut, with shell, dry": "Peanut", "Ginger": "Ginger",
+    "Gabi [Taro]": "Gabi", "Patola": "Patola",
 }
 GRAINS = {"Palay": "Rice", "Corn": "Corn"}
 SOILSSYNC_CROPS = {"Corn": "Corn", "Tomato": "Tomato", "Rice": "Rice"}
