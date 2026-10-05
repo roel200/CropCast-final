@@ -46,7 +46,7 @@ keytool -list -v -keystore $env:USERPROFILE\.android\debug.keystore -storepass a
    If the keystore does not exist yet, build once (`:app:installDebug`) and run the command again. Report the `SHA1:` line (and `SHA256:` if asked); do not edit Firebase yourself.
 3. Check `firmware/CropCastESP32/secrets.h` exists (copy `secrets.example.h` and ask the user for the Firebase values). It is gitignored and must never be committed or printed.
 4. `adb devices` should list the phone before `:app:installDebug`.
-5. `graphify-out/` (the code knowledge graph) is gitignored and is not in the repo. Rebuild it with `/graphify` if you need it.
+5. `graphify-out/` (the code knowledge graph: `graph.json`, `GRAPH_REPORT.md`, `graph.html`, `manifest.json`) is committed. Its `cache/`, `.bak` files and machine-specific interpreter paths are ignored. After changing code, refresh it with `/graphify --update` and commit the result.
 
 ## Conventions that matter
 

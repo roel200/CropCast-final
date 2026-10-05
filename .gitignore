@@ -9,7 +9,10 @@ captures/
 __pycache__/
 *.py[cod]
 .venv/
-graphify-out/
+graphify-out/cache/
+graphify-out/*.bak
+graphify-out/.graphify_python
+graphify-out/.graphify_root
 .kotlin/
 
 # validation download cache
