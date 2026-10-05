@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.cropcast.app.data.FirebaseSensorRepository
+import com.cropcast.app.data.LocalPreferences
 import com.cropcast.app.data.MonthlySensorAggregator
 import com.cropcast.app.data.RainfallEstimate
 import com.cropcast.app.data.SeedRecommendationEngine
@@ -18,13 +19,17 @@ import com.cropcast.app.data.model.MonthlyCropRecommendation
 import com.cropcast.app.data.model.MonthlySensorSummary
 import com.cropcast.app.data.model.SeedRecommendation
 import com.cropcast.app.data.model.SensorReading
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -50,6 +55,8 @@ data class CropCastUiState(
     val settings: AlertSettings = AlertSettings(),
     val alerts: List<AlertEvent> = emptyList(),
     val monthlySummaries: List<MonthlySensorSummary> = emptyList(),
+    /** Every reading by month key, for the daily drill-down on the Sensor screen. */
+    val monthlyReadings: Map<String, List<SensorReading>> = emptyMap(),
     val monthlyRecommendations: List<MonthlyCropRecommendation> = emptyList(),
     val nextMonthRecommendation: MonthlyCropRecommendation? = null,
     val forecastHistory: List<MonthlyCropRecommendation> = emptyList(),
@@ -62,6 +69,8 @@ data class CropCastUiState(
     val isDemo: Boolean = false,
     val isAuthenticated: Boolean = false,
     val isAuthLoading: Boolean = true,
+    /** Set while the pairing dialog waits for the ESP32 to come online with this code. */
+    val pairingCode: String? = null,
     val error: String? = null,
     val message: String? = null
 ) {
@@ -72,9 +81,14 @@ data class CropCastUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class CropCastViewModel(
     private val repository: FirebaseSensorRepository,
-    demoCrop: String = "Potato"
+    demoCrop: String = "Potato",
+    private val preferences: LocalPreferences? = null
 ) : ViewModel() {
-    private val demoMonthlySummaries = demoMonthlyReadings(previewCrop = demoCrop)
+    private val localLanguage = MutableStateFlow(preferences?.language ?: AlertSettings().language)
+    private val localDarkMode = MutableStateFlow(preferences?.darkMode ?: false)
+
+    private val demoReadings = demoMonthlyReadings(previewCrop = demoCrop)
+    private val demoMonthlySummaries = demoReadings
         .map { (month, readings) -> MonthlySensorAggregator.summarize(month, readings) }
         .sortedByDescending { it.monthKey }
     private val demoMonthlyRecommendations = SeedRecommendationEngine.recommendHistory(demoMonthlySummaries)
@@ -82,6 +96,7 @@ class CropCastViewModel(
     private val seedState = MutableStateFlow(
         CropCastUiState(
             monthlySummaries = demoMonthlySummaries,
+            monthlyReadings = demoReadings,
             monthlyRecommendations = demoMonthlyRecommendations,
             nextMonthRecommendation = demoNextMonthRecommendation,
             recommendation = demoNextMonthRecommendation?.recommendedCrop
@@ -103,9 +118,9 @@ class CropCastViewModel(
     )
 
     private val remoteState = seedState
-        .map { it.isAuthenticated to it.isDemo }
+        .map { Triple(it.isAuthenticated, it.isDemo, it.account.deviceId) }
         .distinctUntilChanged()
-        .flatMapLatest { (isAuthenticated, isDemo) ->
+        .flatMapLatest { (isAuthenticated, isDemo, _) ->
         if (!isAuthenticated || isDemo) {
             flowOf(RemoteState())
         } else {
@@ -129,7 +144,30 @@ class CropCastViewModel(
         }
     }
 
-    val uiState: StateFlow<CropCastUiState> = combine(remoteState, seedState) { remote, local ->
+    val uiState: StateFlow<CropCastUiState> = combine(
+        remoteState, seedState, localLanguage, localDarkMode
+    ) { remote, local, language, darkMode ->
+        withLocalPreferences(computeState(remote, local), language, darkMode)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        withLocalPreferences(seedState.value, localLanguage.value, localDarkMode.value)
+    )
+
+    private fun withLocalPreferences(state: CropCastUiState, language: String, darkMode: Boolean) =
+        state.copy(settings = state.settings.copy(language = language, darkModeEnabled = darkMode))
+
+    fun setLanguage(language: String) {
+        preferences?.language = language
+        localLanguage.value = language
+    }
+
+    fun setDarkMode(enabled: Boolean) {
+        preferences?.darkMode = enabled
+        localDarkMode.value = enabled
+    }
+
+    private fun computeState(remote: RemoteState, local: CropCastUiState): CropCastUiState =
         if (!local.isAuthenticated || local.isDemo) {
             val monthlyRecommendations = SeedRecommendationEngine.recommendHistory(local.monthlySummaries)
             val nextMonthRecommendation = SeedRecommendationEngine.recommendNextMonth(
@@ -168,6 +206,7 @@ class CropCastViewModel(
                 settings = remote.settings,
                 alerts = remote.alerts,
                 monthlySummaries = monthlySummaries,
+                monthlyReadings = remote.monthlyReadings,
                 monthlyRecommendations = monthlyRecommendations,
                 nextMonthRecommendation = nextMonthRecommendation ?: forecastHistory.firstOrNull(),
                 forecastHistory = forecastHistory,
@@ -177,11 +216,6 @@ class CropCastViewModel(
                     ?: monthlyRecommendations.firstOrNull()?.recommendedCrop
             )
         }
-    }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5_000),
-        seedState.value
-    )
 
     private val lastAlertAt = mutableMapOf<String, Long>()
     private val persistedRecommendationSignatures = mutableSetOf<String>()
@@ -299,7 +333,45 @@ class CropCastViewModel(
             .onFailure { error ->
                 seedState.value = seedState.value.copy(
                     isAuthLoading = false,
-                    message = error.message ?: "Login failed"
+                    message = authMessage(error, "Login failed")
+                )
+            }
+    }
+
+    fun register(name: String, email: String, password: String) = viewModelScope.launch {
+        val displayName = name.trim()
+        val normalizedEmail = email.trim()
+        when {
+            displayName.isBlank() -> return@launch showMessage("Enter your name")
+            normalizedEmail.isBlank() -> return@launch showMessage("Enter your email address")
+            !android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches() ->
+                return@launch showMessage("Enter a valid email address")
+            password.length < 6 -> return@launch showMessage("Password must contain at least 6 characters")
+        }
+        seedState.value = seedState.value.copy(isAuthLoading = true, message = null)
+        if (uiState.value.isDemo) {
+            seedState.value = seedState.value.copy(
+                account = AccountInfo(displayName = displayName, email = normalizedEmail, isAnonymous = false),
+                isAuthenticated = true,
+                isAuthLoading = false,
+                message = "Account created"
+            )
+            return@launch
+        }
+        runCatching { repository.register(displayName, normalizedEmail, password) }
+            .onSuccess { account ->
+                seedState.value = seedState.value.copy(
+                    account = account,
+                    isAuthenticated = true,
+                    isAuthLoading = false,
+                    error = null,
+                    message = "Account created"
+                )
+            }
+            .onFailure { error ->
+                seedState.value = seedState.value.copy(
+                    isAuthLoading = false,
+                    message = authMessage(error, "Registration failed")
                 )
             }
     }
@@ -378,6 +450,38 @@ class CropCastViewModel(
         }
     }
 
+    private var pairingJob: Job? = null
+
+    /** Shows a fresh code; the account switches to the device only once it reports online with it. */
+    fun startPairing() {
+        if (uiState.value.isDemo) return showMessage("Pairing needs a signed-in Firebase account")
+        pairingJob?.cancel()
+        pairingJob = viewModelScope.launch {
+            runCatching {
+                val code = repository.freePairingCode()
+                seedState.value = seedState.value.copy(pairingCode = code)
+                repository.observeDeviceOnline(code).dropWhile { it }.first { it }  // wait for offline -> online
+                repository.savePairedDevice(code)
+                code
+            }.onSuccess { code ->
+                seedState.value = seedState.value.copy(
+                    account = seedState.value.account.copy(deviceId = code),
+                    pairingCode = null
+                )
+                showMessage("Device paired")
+            }.onFailure {
+                if (it is CancellationException) throw it
+                seedState.value = seedState.value.copy(pairingCode = null)
+                showMessage(it.message ?: "Pairing failed")
+            }
+        }
+    }
+
+    fun cancelPairing() {
+        pairingJob?.cancel()
+        seedState.value = seedState.value.copy(pairingCode = null)
+    }
+
     fun testConnection() = viewModelScope.launch {
         if (uiState.value.isDemo) return@launch showMessage("Demo mode is working; Firebase is not configured")
         runCatching { repository.testConnection() }
@@ -392,13 +496,13 @@ class CropCastViewModel(
             .onFailure { showMessage(it.message ?: "Restart command failed") }
     }
 
-    fun updateAccount(displayName: String, role: String) = viewModelScope.launch {
+    fun updateAccount(displayName: String) = viewModelScope.launch {
         if (uiState.value.isDemo) {
             seedState.value = seedState.value.copy(
-                account = uiState.value.account.copy(displayName = displayName, role = role),
+                account = uiState.value.account.copy(displayName = displayName),
                 message = "Profile saved in demo mode"
             )
-        } else runCatching { repository.updateAccountInfo(displayName, role) }
+        } else runCatching { repository.updateAccountInfo(displayName) }
             .onSuccess { seedState.value = seedState.value.copy(account = it, message = "Profile updated") }
             .onFailure { showMessage(it.message ?: "Could not update profile") }
     }
@@ -557,6 +661,15 @@ class CropCastViewModel(
     }
 }
 
+/** Firebase's own error text is English and technical; map the common cases to messages the app translates. */
+private fun authMessage(error: Throwable, fallback: String): String = when (error) {
+    is com.google.firebase.auth.FirebaseAuthUserCollisionException -> "This email is already registered. Log in instead."
+    is com.google.firebase.auth.FirebaseAuthInvalidCredentialsException,
+    is com.google.firebase.auth.FirebaseAuthInvalidUserException -> "Wrong email or password"
+    is com.google.firebase.FirebaseNetworkException -> "Check your internet connection and try again"
+    else -> error.message ?: fallback
+}
+
 private fun currentMonthKey(timestamp: Long = System.currentTimeMillis()): String =
     SimpleDateFormat("yyyy-MM", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
         .format(Date(timestamp))
@@ -608,8 +721,9 @@ const val MAX_SAMPLE_SPOTS = 10
 
 class CropCastViewModelFactory(
     private val repository: FirebaseSensorRepository,
-    private val demoCrop: String = "Potato"
+    private val demoCrop: String = "Potato",
+    private val preferences: LocalPreferences? = null
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T = CropCastViewModel(repository, demoCrop) as T
+    override fun <T : ViewModel> create(modelClass: Class<T>): T = CropCastViewModel(repository, demoCrop, preferences) as T
 }

@@ -12,6 +12,7 @@ import com.cropcast.app.data.model.SensorReading
 import com.cropcast.app.data.model.isValidForRecommendation
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -27,14 +28,16 @@ import java.time.ZoneOffset
 
 class FirebaseSensorRepository(
     context: Context,
-    private val deviceId: String = "esp32-field-01",
+    private val defaultDeviceId: String = com.cropcast.app.BuildConfig.DEVICE_ID,
     forceDemo: Boolean = false
 ) {
     private val credentialManager = androidx.credentials.CredentialManager.create(context.applicationContext)
     private val configured = !forceDemo && FirebaseApp.getApps(context).isNotEmpty()
     private val auth by lazy { FirebaseAuth.getInstance() }
     private val database by lazy { FirebaseDatabase.getInstance() }
-    private val deviceRef by lazy { database.reference.child("devices").child(deviceId) }
+    // The paired device from users/{uid}/deviceId, loaded in loadAccountInfo() before any listener attaches.
+    @Volatile private var deviceId: String = defaultDeviceId
+    private val deviceRef get() = database.reference.child("devices").child(deviceId)
 
     suspend fun connect(): Result<Unit> = runCatching {
         check(configured) { "Firebase is not configured. Add app/google-services.json." }
@@ -49,6 +52,14 @@ class FirebaseSensorRepository(
         check(configured) { "Firebase is not configured. Continue in demo mode instead." }
         auth.signInWithEmailAndPassword(email.trim(), password).await()
         return loadAccountInfo()
+    }
+
+    suspend fun register(displayName: String, email: String, password: String): AccountInfo {
+        check(configured) { "Registration needs a Firebase account. Add google-services.json first." }
+        val user = auth.createUserWithEmailAndPassword(email.trim(), password).await().user
+            ?: error("Registration failed")
+        user.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(displayName).build()).await()
+        return updateAccountInfo(displayName)
     }
 
     suspend fun signInWithGoogle(idToken: String): AccountInfo {
@@ -175,21 +186,58 @@ class FirebaseSensorRepository(
         connect().getOrThrow()
         val user = requireNotNull(auth.currentUser)
         val profile = database.reference.child("users/${user.uid}/profile").get().await()
+        val pairedId = database.reference.child("users/${user.uid}/deviceId").get().await()
+            .getValue(String::class.java)
+        deviceId = pairedId?.takeIf { it.isNotBlank() } ?: defaultDeviceId
         return AccountInfo(
             displayName = profile.child("displayName").getValue(String::class.java) ?: user.displayName ?: "Guest Farmer",
             role = profile.child("role").getValue(String::class.java) ?: "Farmer",
             email = user.email ?: "Anonymous account",
-            isAnonymous = user.isAnonymous
+            isAnonymous = user.isAnonymous,
+            deviceId = deviceId
         )
     }
 
-    suspend fun updateAccountInfo(displayName: String, role: String): AccountInfo {
+    /** A PIN nobody has published under yet, so pairing cannot land on someone else's device. */
+    suspend fun freePairingCode(): String {
+        connect().getOrThrow()
+        // Re-pairing keeps the account's PIN, so its history survives a Wi-Fi change.
+        if (Regex("\\d{4}").matches(deviceId)) return deviceId
+        repeat(10) {
+            val code = PairingCode.generate()
+            val taken = database.reference.child("devices").child(code).child("status").get().await().exists()
+            if (!taken) return code
+        }
+        error("Could not find a free pairing PIN. Try again.")
+    }
+
+    /** True while the device that was given [code] in its setup portal reports itself online. */
+    fun observeDeviceOnline(code: String): Flow<Boolean> = callbackFlow {
+        connect().getOrThrow()
+        val reference = database.reference.child("devices").child(code).child("status/online")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) { trySend(snapshot.getValue(Boolean::class.java) == true) }
+            override fun onCancelled(error: DatabaseError) { close(error.toException()) }
+        }
+        reference.addValueEventListener(listener)
+        awaitClose { reference.removeEventListener(listener) }
+    }
+
+    /** Makes [code] this account's device from now on, on every phone the account signs in on. */
+    suspend fun savePairedDevice(code: String) {
+        connect().getOrThrow()
+        val user = requireNotNull(auth.currentUser)
+        database.reference.child("users/${user.uid}/deviceId").setValue(code).await()
+        deviceId = code
+    }
+
+    suspend fun updateAccountInfo(displayName: String, role: String = "Farmer"): AccountInfo {
         connect().getOrThrow()
         val user = requireNotNull(auth.currentUser)
         database.reference.child("users/${user.uid}/profile").setValue(
             mapOf("displayName" to displayName, "role" to role)
         ).await()
-        return AccountInfo(displayName, role, user.email ?: "Anonymous account", user.isAnonymous)
+        return AccountInfo(displayName, role, user.email ?: "Anonymous account", user.isAnonymous, deviceId)
     }
 
     suspend fun changePassword(password: String) {
@@ -199,6 +247,7 @@ class FirebaseSensorRepository(
     }
 
     suspend fun signOut() {
+        deviceId = defaultDeviceId
         if (configured) {
             auth.signOut()
             try {

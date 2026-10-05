@@ -31,10 +31,13 @@ class FarmAdviceTest {
     }
 
     @Test
-    fun catalogCoversSeventeenCropsWithEcocropData() {
-        assertEquals(17, FarmSuitabilityEngine.CROPS.size)
+    fun catalogCoversTwentyFiveCropsWithEcocropData() {
+        assertEquals(25, FarmSuitabilityEngine.CROPS.size)
         FarmSuitabilityEngine.CROPS.forEach { assertNotNull(it.name, FarmSuitabilityEngine.ECOCROP[it.name]) }
-        assertTrue(FarmSuitabilityEngine.CROPS.map { it.name }.containsAll(listOf("Pechay", "Kangkong", "Ampalaya", "Sitaw", "Kalabasa")))
+        assertTrue(
+            FarmSuitabilityEngine.CROPS.map { it.name }
+                .containsAll(listOf("Pechay", "Kangkong", "Ampalaya", "Sitaw", "Kalabasa", "Chili", "Onion", "Garlic", "Mungbean", "Peanut", "Ginger", "Gabi", "Patola"))
+        )
     }
 
     @Test
@@ -68,14 +71,18 @@ class FarmAdviceTest {
         val nitrogen = plan.getValue("Nitrogen")
         assertEquals(NutrientStatus.LOW, nitrogen.status)                 // 16 mg/kg < 125
         assertEquals(150.0, nitrogen.applyKgPerHa!!, 1e-9)                // low soil -> top of the need
-        assertTrue(nitrogen.action.contains("326 kg Urea"))               // 150 / 0.46
+        assertTrue(nitrogen.action.contains("326 kg per hectare"))        // 150 / 0.46
+        assertTrue(nitrogen.action.contains("33 kg per 1,000 m²"))
+        assertTrue(nitrogen.action.contains("Urea (46-0-0)"))
         val phosphorus = plan.getValue("Phosphorus")
         assertEquals(NutrientStatus.OK, phosphorus.status)                // 24 mg/kg is medium (10-25)
         assertEquals(60.0, phosphorus.applyKgPerHa!!, 1e-9)               // middle of 50-70
         val potassium = plan.getValue("Potassium")
         assertEquals(NutrientStatus.LOW, potassium.status)                // 55 mg/kg < 78
-        assertTrue(potassium.action.contains("250 kg Muriate of potash")) // 150 / 0.60
-        assertTrue(potassium.action.contains("5.0 bags/ha"))
+        assertTrue(potassium.action.contains("250 kg per hectare"))       // 150 / 0.60
+        assertTrue(potassium.action.contains("25 kg per 1,000 m²"))
+        assertTrue(potassium.action.contains("about ½ sack of 50 kg"))
+        assertTrue(potassium.action.contains("Muriate of potash"))
     }
 
     @Test
@@ -144,7 +151,7 @@ class FarmAdviceTest {
         val asset = listOf(File("src/main/assets/crop_economics.json"), File("app/src/main/assets/crop_economics.json"))
             .first(File::isFile)
         val economics = FarmSuitabilityEngine.parseEconomics(asset.readText())
-        assertEquals(17, economics.size)
+        assertEquals(25, economics.size)
         val rice = economics.getValue("Rice")
         assertTrue(rice.yieldTonnesPerHa!! in 3.0..6.0)       // national palay yield is about 4 t/ha
         assertTrue(rice.farmgatePricePhpPerKg!! in 12.0..35.0)

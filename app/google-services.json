@@ -15,6 +15,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "155556421068-7j9kf37758esv9sbaggrcv61jfirkm4p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cropcast.app",
+            "certificate_hash": "335d6bfd27d60e31437ed5ac5349966dcbd99dee"
+          }
+        },
+        {
           "client_id": "155556421068-mn26p7f9vt4asbs2rdg38ubhegf9udkh.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

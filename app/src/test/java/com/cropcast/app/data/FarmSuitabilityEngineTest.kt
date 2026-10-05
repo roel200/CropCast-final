@@ -138,6 +138,25 @@ class FarmSuitabilityEngineTest {
     }
 
     @Test
+    fun fertilizerPlanFollowsTheCropGrowingNowNotTheTopRankedOne() {
+        val farm = site(temperature = 28.0)
+        val top = FarmSuitabilityEngine.recommend(probe, farm, plantingMonth = 10)
+        val other = FarmSuitabilityEngine.CROPS.first { it.name != top.top!!.crop.name && it.needKgHa != null }.name
+
+        val growing = FarmSuitabilityEngine.recommend(probe, farm, plantingMonth = 10, growingCrop = " ${other.lowercase()} ")
+        assertEquals(other, growing.nutrientCrop)
+        assertTrue(growing.growing)
+        assertTrue(growing.nutrientPlan.first { it.nutrient == "Nitrogen" }.action.contains("top-dress"))
+
+        // Blank or unknown crop keeps today's behaviour: the plan is for the top-ranked crop.
+        for (name in listOf("", "Dragonfruit", null)) {
+            val fallback = FarmSuitabilityEngine.recommend(probe, farm, plantingMonth = 10, growingCrop = name)
+            assertEquals(top.top!!.crop.name, fallback.nutrientCrop)
+            assertTrue(!fallback.growing)
+        }
+    }
+
+    @Test
     fun acidSoilLowersButDoesNotExcludeACropAndAdvisesLime() {
         val acid = probe.copy(soilPh = 4.6)  // below cabbage's absolute minimum (5.0), within potato's (4.2)
         val site = site(temperature = 17.0, clay = 20.0, sand = 40.0)
@@ -145,10 +164,22 @@ class FarmSuitabilityEngineTest {
         val result = FarmSuitabilityEngine.recommend(acid, site, plantingMonth = 1)
         val cabbage = result.ranked.first { it.crop.name == "Cabbage" }
 
-        assertEquals(80, cabbage.score)  // pH 0 of weight 0.5 -> 60 % + 40 % x 0.5
+        assertEquals(58, cabbage.score)  // pH 0 of weight 0.5 -> 80, x 0.73 for pH 0.4 below the crop's limit
         assertEquals(100, limed.score)
         assertTrue(result.ranked.first { it.crop.name == "Potato" }.score > cabbage.score)
         assertTrue(result.nutrientPlan.first().action.contains("lime"))
+    }
+
+    @Test
+    fun phFarBeyondACropsLimitIsNeverHighlySuitable() {
+        val site = site(temperature = 25.0, clay = 20.0, sand = 40.0)
+        fun okra(ph: Double) = FarmSuitabilityEngine.recommend(probe.copy(soilPh = ph), site, plantingMonth = 6)
+            .ranked.first { it.crop.name == "Okra" }
+        assertTrue(okra(3.9).score < 60)                       // 0.6 below Okra's minimum 4.5: not S1/S2
+        assertTrue(okra(3.9).score < okra(4.4).score)          // further out scores lower
+        assertTrue(okra(6.0).score > okra(4.4).score)          // optimum beats a limit miss
+        assertTrue(okra(6.0).factors.none { it.name == "Soil pH limit" })
+        assertTrue(okra(2.5).score > 0)                        // floor 40 % keeps the ranking, never excluded outright
     }
 
     @Test

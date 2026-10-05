@@ -84,6 +84,46 @@
    "yieldTonnesPerHa": 14.57,
    "farmgatePricePhpPerKg": 25.2,
    "grossPhpPerHa": 367200.0
+  },
+  "Chili": {
+   "yieldTonnesPerHa": 2.33,
+   "farmgatePricePhpPerKg": 130.29,
+   "grossPhpPerHa": 303600.0
+  },
+  "Onion": {
+   "yieldTonnesPerHa": 11.52,
+   "farmgatePricePhpPerKg": 65.05,
+   "grossPhpPerHa": 749400.0
+  },
+  "Garlic": {
+   "yieldTonnesPerHa": 2.44,
+   "farmgatePricePhpPerKg": 132.51,
+   "grossPhpPerHa": 323300.0
+  },
+  "Mungbean": {
+   "yieldTonnesPerHa": 0.89,
+   "farmgatePricePhpPerKg": 62.51,
+   "grossPhpPerHa": 55600.0
+  },
+  "Peanut": {
+   "yieldTonnesPerHa": 1.22,
+   "farmgatePricePhpPerKg": 65.67,
+   "grossPhpPerHa": 80100.0
+  },
+  "Ginger": {
+   "yieldTonnesPerHa": 5.97,
+   "farmgatePricePhpPerKg": 65.81,
+   "grossPhpPerHa": 392900.0
+  },
+  "Gabi": {
+   "yieldTonnesPerHa": 6.85,
+   "farmgatePricePhpPerKg": 28.73,
+   "grossPhpPerHa": 196800.0
+  },
+  "Patola": {
+   "yieldTonnesPerHa": 4.89,
+   "farmgatePricePhpPerKg": 29.61,
+   "grossPhpPerHa": 144800.0
   }
  }
 }
