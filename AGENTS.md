@@ -34,6 +34,20 @@ adb exec-out screencap -p > shot.png                    # screenshot the phone
 - `app/google-services.json` is required for Firebase; without it the app runs in demo mode.
 - The firmware has **no local compiler** on the development PC. Compile it in Arduino IDE (board ESP32, **Partition Scheme: Huge APP (3MB No OTA)**, libraries listed in `firmware/CropCastESP32/README.md`).
 
+## First run on a new machine (agents: do this first)
+
+1. Run Gradle **without `--offline`** once so dependencies download: `.\gradlew.bat :app:testDebugUnitTest`.
+2. **Print this machine's debug signing fingerprint and show it to the user**, then ask them to add the SHA-1 in Firebase console > Project settings > the Android app `com.cropcast.app` > Add fingerprint. Google sign-in fails with the app installed from this machine until that is done. If they change it, they should download a fresh `app/google-services.json`.
+
+```powershell
+keytool -list -v -keystore $env:USERPROFILE\.android\debug.keystore -storepass android -alias androiddebugkey
+```
+
+   If the keystore does not exist yet, build once (`:app:installDebug`) and run the command again. Report the `SHA1:` line (and `SHA256:` if asked); do not edit Firebase yourself.
+3. Check `firmware/CropCastESP32/secrets.h` exists (copy `secrets.example.h` and ask the user for the Firebase values). It is gitignored and must never be committed or printed.
+4. `adb devices` should list the phone before `:app:installDebug`.
+5. `graphify-out/` (the code knowledge graph) is gitignored and is not in the repo. Rebuild it with `/graphify` if you need it.
+
 ## Conventions that matter
 
 - **Line endings are CRLF** in most source files. Preserve them; do not rewrite whole files with LF. Edit with exact-match replacements, then check with `file <path>`.
