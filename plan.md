@@ -1,269 +1,179 @@
-# CropCast Monthly Crop Recommendation Plan
+# CropCast Prediction tab: plan
 
-## Goal
+Status: **planned, not built.** Date of this plan: 2026-10-05. The earlier monthly-recommendation plan was delivered; it is kept in `docs/plan-monthly-recommendation.md`.
 
-Extend CropCast so that every eligible closed month with enough valid sensor data receives:
+## 1. Goal
 
-1. A recommendation for that completed month based on its measured conditions.
-2. A recommendation for the next month based on the latest month and available historical months.
-3. A saved history that lets the farmer review recommendations and compare forecasts with later results.
+A fourth bottom tab, **Prediction**, that answers "what should I plant, and when" for the next 12 months.
 
-The recommendation is a suitability recommendation, not a guaranteed yield prediction. The app now collects planted crop, harvest weight, rating, and problem notes. After at least three valid ratings for a crop, the engine applies only a conservative local score adjustment; harvest weight remains evaluation data until field area and yield units are normalized.
+1. **Best to plant now**: the winning crop, its score and FAO class, expected income, and the main risk.
+2. **Crop x month grid**: the 8 best crops for this farm down the side, the next 12 months across, each cell coloured by suitability if planted in that month.
+3. **Crop detail**: tap a crop for its best planting window, the factors behind the score, season risks, and income.
+4. **Honest provenance**: a label that says what the numbers rest on (real probe, simulated seed, climate averages, seasonal forecast).
 
-The saved recommendation history, next-month forecast, variability details, seasonal advisory, and farm-outcome collection described below are implemented in the current app.
+It is a suitability prediction, not a yield forecast. Yield needs real harvest outcomes (see section 9).
 
-## Current project baseline
+### Decided
 
-- Firebase stores readings at `devices/{deviceId}/readings/monthly/{yyyy-MM}`.
-- `MonthlySensorAggregator` already averages valid readings for each month.
-- `SeedRecommendationEngine` currently scores 12 crops using temperature, humidity, soil moisture, pH, nitrogen, phosphorus, and potassium.
-- `CropCastUiState` already keeps all Firebase monthly summaries, but `SeedsScreen` currently displays only the latest available month.
-- Demo mode already generates 12 months with 8 readings per month; the history UI should expose that existing data instead of creating a separate demo path.
-- Crop ranges come from `data/processed/crop_requirements_selected.json`.
-- `data/processed/mobile_tomato_complete.csv` and the other files under `data/raw` are offline/reference datasets. They are not currently loaded by the Android runtime or joined to Firebase readings.
-- The NPK unit compatibility and moisture ranges are still provisional and must remain visible in the recommendation explanation.
-- Light should remain display-only until the lux and `W/m2` datasets can be calibrated against each other.
+| Question | Decision |
+|---|---|
+| Horizon | 12 months, starting at the current month |
+| Crops | Top 8 for this farm, with "show all crops" |
+| Method | The existing rule-based engine. No new library, no trained model |
+| AI | Optional second step; text only; scores never come from the LLM |
 
-## Recommendation definitions
+### Non-goals
 
-### Completed-month recommendation
+- No ML model or yield prediction until there are 1-2 years of real readings plus outcome records.
+- No new data source, no new Firebase paths, no database rules change.
+- No change to the existing Crop Recommendation tab.
 
-For a month `M`:
+## 2. What already exists (reuse, do not rebuild)
 
-1. Load all valid readings under `readings/monthly/M`.
-2. Aggregate them into one `MonthlySensorSummary`.
-3. Score every crop against the monthly average.
-4. Sort by score, using the fixed crop-profile order already defined in `SeedRecommendationEngine` as the tie-breaker.
-5. Save the top crop, score, runner-up, sample count, and score breakdown for `M`.
+| Need | Already in code |
+|---|---|
+| Per-month scores | `CropSuitability.monthlyScores`: score if planted in each month, **January first**, from `FarmSuitabilityEngine.recommend()`. Empty without climate normals. |
+| Best window | `CropSuitability.bestPlantingMonths` (months within 5 points of the best). The Why-card already shows "Best months to plant: Jun, Jul". |
+| Class colours | `SuitabilityClass.of(score)`: S1 >= 80, S2 >= 60, S3 >= 40, N below. |
+| Factors and risks | `CropSuitability.factors`, `.risks`, `.limitingFactor`. |
+| Income | `CropSuitability.economics.grossPhpPerHa`; `FarmRecommendation.bestValue` (highest gross among S1/S2 crops; shown as "Best income among suitable crops"). |
+| Inputs | `farmRecommendation` is already computed in `CropCastApp.kt` from probe soil, site data (NASA POWER normals, ECMWF seasonal, Open-Meteo, SoilGrids/BSWM), soil type setting, irrigation, current crop. |
+| Forecast vs average | `ClimateNormals.forecastMonths`: months replaced by the ECMWF seasonal forecast. |
+| Explanations | `FarmAdviceRepository.explain()` via the Cloudflare worker (live). |
 
-This answers: **“Which crop best matched the conditions recorded during this month?”**
+Consequence: **the grid is mostly UI over data that is already calculated.** No new engine call per month is needed.
 
-### Next-month recommendation
+## 3. Data flow
 
-When month `M` is complete, produce a forecast for `M+1`:
-
-1. Use the latest complete month as the strongest signal.
-2. Include the average sensor profile for the same calendar month in previous years when available.
-3. Include the weighted average sensor profile of the three complete months before the latest month to reduce one-month sensor noise without double-counting the latest month.
-4. Blend those sensor profiles field-by-field, then score the resulting forecast sensor profile against every crop profile.
-5. Save the top crop as the recommendation for `M+1`, clearly labelled as a forecast.
-
-Use these default weights for the forecast:
-
-| Signal | Weight |
-|---|---:|
-| Latest complete month | 60% |
-| Same calendar month in prior years | 25% |
-| Three complete months before the latest | 15% |
-
-If a signal is unavailable, redistribute its weight across the available signals and record which signals were used. If there is only one valid month, use that month as the forecast baseline and lower the confidence label to `Limited history`.
-
-For the first implementation, define a complete month as a `yyyy-MM` month before the current UTC month. Later, support an explicit farmer/admin close action for locations where the growing calendar does not follow UTC calendar months. A current-month record may be shown as `Month to date`, but it must not be presented as a closed-month result.
-
-If there is no eligible closed month, do not forecast a crop. Show `Insufficient history` and the number of valid readings still needed.
-
-## Scoring rules
-
-Keep the existing range-based scoring as the first implementation:
-
-```text
-field score = 100 when the value is inside the crop range
-field score decreases by distance outside the range
-crop score = average of the seven field scores
+```
+CropCastApp.farmRecommendation  (already computed)
+        |  ranked: List<CropSuitability>
+        v
+PredictionModel.build(ranked, currentMonth, forecastMonths, status)   <- new, pure Kotlin, unit-tested
+        v
+PredictionScreen (grid + top card + detail sheet)
 ```
 
-The seven scored fields are temperature, humidity, soil moisture, soil pH, nitrogen, phosphorus, and potassium. Keep the score between 0 and 100.
+`PredictionModel` is a pure function so it can be tested without Android.
 
-Keep the current `SeedRecommendation.confidence` value as the suitability score for backward compatibility, but add a separate confidence label. Start with these deterministic labels:
+## 4. Computation rules
 
-- `High confidence`: score at least 80, at least 8 valid readings, and a top-crop margin of at least 10 points over the runner-up.
-- `Moderate confidence`: score at least 60 but the high-confidence conditions are not met.
-- `Low confidence`: score below 60.
-- `Limited history`: fewer than two eligible historical months are available for a forecast, even when the suitability score is high.
+1. **Crop selection.** `ranked.take(8)` by current score. If the user picks "show all", use all crops, still sorted by score.
+2. **Month rotation.** `monthlyScores` is January-first. Row cells are rotated so the first column is the current month: `cell[i] = monthlyScores[(currentMonth - 1 + i) % 12]`. The month label also carries the year when the sequence crosses December.
+3. **Empty scores.** If `monthlyScores` is empty (no climate normals yet), show one state: "Set the farm location and connect to the internet once to see the planting calendar." No grid.
+4. **Cell colour.** From `SuitabilityClass`: S1 green, S2 light green, S3 amber, N red. Also print the number in the cell, so colour is never the only signal.
+5. **Best window per crop.** From `bestPlantingMonths`, rotated to start at the current month, grouped into contiguous runs ("Jun-Jul"). If the crop is already in a good window now, say "Plant now".
+6. **Best to plant now.** The crop with the highest score for the current month among those with class S1/S2; if none, show the top crop with a warning, not a recommendation. Show the next best month for the top crop when "now" is not its window.
+7. **Season length.** Each crop carries `growDays`. Show "Harvest about <month>" = planting month + `growDays`, using `YearMonth` arithmetic, never string maths.
+8. **Income.** `grossPhpPerHa` is PSA national yield x farmgate price, before costs. Always label it "before costs, national average". It is shown beside the score, never mixed into the score.
+9. **Forecast vs average.** A cell whose month is in `forecastMonths` is marked "seasonal forecast"; the others "climate average". Months beyond the forecast say so in the legend. The forecast reaches about 7 months; later cells use averages.
+10. **Soil is constant across months.** The probe soil, soil type and salinity apply to every cell. Only climate (temperature, rain, humidity, disease pressure) moves between months. State this in the screen footer so users do not read the grid as a soil forecast.
 
-Each recommendation should include:
+## 5. Confidence and provenance label
 
-- Crop name, variety, soil type, and expected growing days.
-- Suitability score and confidence label.
-- Sample count and date range used.
-- The three strongest matching fields.
-- The fields that reduced the score.
-- A warning when NPK units or moisture calibration are still provisional.
-- Whether it is an `Observed month` recommendation or a `Next month forecast`.
+A single line under the top card, chosen in this order (first match wins):
 
-## Proposed data model
+| Condition | Label |
+|---|---|
+| Device status says `simulated: true`, or firmware starts with `demo-seed` | "Demo data: soil values are simulated. Do not plant from this." |
+| No probe soil (`soilPh == 0`) | "No soil reading yet: crop ranges only." |
+| No climate normals loaded | "Climate not loaded." (grid hidden) |
+| Probe pH differs from the soil map by more than 1.0 | "Probe pH disagrees with the soil map: check the probe." |
+| Otherwise | "Based on your probe, NASA climate averages and the ECMWF seasonal forecast." |
 
-Add a model similar to:
+Needs one small change: `DeviceStatus` must expose `simulated` and `firmware` (the repository reads `firmware` already; `simulated` is written by `scripts/seed_demo_history.py`).
 
-```kotlin
-data class MonthlyCropRecommendation(
-    val monthKey: String,
-    val cropName: String,
-    val cropVariety: String,
-    val cropIcon: String,
-    val growDays: Int,
-    val soil: String,
-    val score: Int,
-    val runnerUpName: String = "",
-    val runnerUpScore: Int = 0,
-    val scoreByCrop: Map<String, Int> = emptyMap(),
-    val sampleCount: Int = 0,
-    val firstReadingAt: Long = 0L,
-    val lastReadingAt: Long = 0L,
-    val basedOnMonths: List<String> = emptyList(),
-    val recommendationType: String, // observed_month or next_month_forecast
-    val confidenceLabel: String,
-    val matchingFields: List<String> = emptyList(),
-    val limitingFields: List<String> = emptyList(),
-    val generatedAt: Long = 0L,
-    val algorithmVersion: String = "monthly-v1"
-)
+## 6. UI spec (phone width 360-412 dp)
+
+```
+Prediction
++--------------------------------------------+
+| Best to plant now                          |
+| Rice (Lowland)   86%  S1 Highly suitable   |
+| Plant now. Harvest about Feb.              |
+| ~ P85k/ha gross before costs               |
+| Main risk: rainfall below 290 mm/month     |
+| [Demo data banner / confidence line]       |
++--------------------------------------------+
+| Planting calendar  (swipe sideways)        |
+|            Oct Nov Dec Jan Feb ... Sep     |
+| Rice        86  70  55  48 ...             |
+| Cucumber    80  ...                         |
+| (8 rows)         [Show all crops]          |
+| Legend: S1 S2 S3 N  | forecast | average    |
++--------------------------------------------+
+| footer: soil is the same in every month    |
++--------------------------------------------+
 ```
 
-Use this Firebase structure if recommendations are persisted:
+- The grid is one horizontally scrollable `LazyRow`-style table: crop names pinned in a left column, 12 month columns of 44 dp.
+- Tapping a crop row opens a bottom sheet: best window, harvest month, factor list (same `FactorScore` rows as the Why card), risks, income.
+- Dark mode uses the app theme; cell colours are the same hues with dark-mode alpha.
+- Strings go through `tr()`; add Hiligaynon (and Filipino) entries in `Localization.kt` and `FilipinoStrings.kt`. `FilipinoCoverageTest` will fail on missing keys; add them with the screen.
 
-```text
-/devices/{deviceId}/recommendations/monthly/{yyyy-MM}
-  observed/
-    recommendedCrop
-    score
-    sampleCount
-    basedOnMonths
-    scoreByCrop
-    confidenceLabel
-    generatedAt
-    algorithmVersion
-  forecast/
-    recommendedCrop
-    score
-    sampleCount
-    basedOnMonths
-    confidenceLabel
-    generatedAt
-    algorithmVersion
-```
+## 7. Files
 
-Store the observed record under the month whose readings were measured. Store a forecast under its target month, and use `basedOnMonths` to identify the earlier data that produced it. This makes it straightforward to compare `/monthly/{target}/forecast` with `/monthly/{target}/observed`.
+New:
+- `app/src/main/java/com/cropcast/app/data/PredictionModel.kt`: pure model, rotation, windows, labels.
+- `app/src/main/java/com/cropcast/app/ui/screens/PredictionScreen.kt`: top card, grid, detail sheet.
+- `app/src/test/java/com/cropcast/app/data/PredictionModelTest.kt`.
 
-The app should be able to calculate recommendations locally from `readings/monthly` when the recommendation node is missing. This keeps the feature usable with existing Firebase fixtures and demo mode.
+Changed:
+- `ui/CropCastApp.kt`: fourth tab in the bottom bar, route to `PredictionScreen(farmRecommendation, state, ...)`.
+- `data/model/SensorModels.kt` and `data/FirebaseSensorRepository.kt`: `DeviceStatus.simulated`.
+- `ui/localization/*`: new strings.
 
-Because the current `firebase/database.rules.json` has no `recommendations` write rule, persistence requires an explicit rules update. Validate the month-key format, crop name, score bounds, sample count, and algorithm version before enabling writes.
+No ViewModel change and no Firebase change: `farmRecommendation` is already in `CropCastApp`.
 
-The current `SensorReading` data class supplies `0.0` defaults for missing fields, which can make a missing sensor value look like a real zero. Validate required child fields from the Firebase snapshot before converting to `SensorReading`, or introduce a nullable transport model. Do not rely on `0.0` alone to detect missing data.
+## 8. Phases
 
-## Monthly workflow
+| Phase | Work | Verify |
+|---|---|---|
+| 1 | `PredictionModel` + tests | `./gradlew.bat --offline :app:testDebugUnitTest` |
+| 2 | Tab, top card, grid, detail sheet, strings | Install on phone, check each state with adb screenshots |
+| 3 | Provenance label, `DeviceStatus.simulated` | Seeded account shows the demo banner; a real device does not |
+| 4 (optional) | "Explain the planting window" via the worker | Worker output checked against the facts sent |
 
-Run this workflow whenever monthly readings change and when the Seeds screen opens:
+Phase 1-3 are the first version.
 
-1. Read all monthly readings.
-2. Ignore readings with an invalid or missing timestamp.
-3. Build one summary per `yyyy-MM` month.
-4. Mark a month as eligible only when it meets the minimum sample count. Start with `8` samples, matching the generated demo and test fixtures, and make the threshold configurable later. This threshold applies to monthly history/forecast eligibility; keep the low-level engine able to score smaller test summaries.
-5. Generate an observed-month recommendation for every eligible month.
-6. Generate a next-month forecast from the newest eligible month.
-7. Do not overwrite a completed month’s observed recommendation unless the algorithm version changes or new corrected readings are received.
-8. Display the newest forecast first, followed by the monthly recommendation history.
+## 9. Tests (PredictionModelTest)
 
-The runtime flow should remain:
+- Rotation: January-first scores rotate correctly for every current month, including December and January.
+- Colour class boundaries at 80, 60, 40.
+- Window grouping: contiguous runs, a run that wraps across December, a single month, no window.
+- Empty `monthlyScores` returns the "needs climate" state, not a grid of zeros.
+- "Best to plant now" never returns a class N crop as a recommendation.
+- Harvest month crosses a year boundary.
+- Provenance label priority order.
+- Crops with `needKgHa == null` ("pH advice only") still appear.
 
-```text
-Firebase observeMonthlyReadings()
-        -> MonthlySensorAggregator.summarize()
-        -> monthly recommendation/forecast engine
-        -> CropCastUiState
-        -> SeedsScreen
-```
+Acceptance: all tests pass; the tab renders on a real phone in light and dark mode with the seeded account; both Hiligaynon and English show no raw keys; with no location set the screen shows the "set location" state.
 
-Use `YearMonth` in UTC to calculate `M+1`; never increment the `yyyy-MM` string manually.
+## 10. Optional AI step (phase 4)
 
-Example:
+The worker (`worker/index.js`, deployed at `cropcast-advice.cropcast.workers.dev`) writes plain-language text from facts the app sends. Before using it for Prediction:
 
-```text
-2026-08 sensor readings
-        ↓
-2026-08 observed recommendation
-        ↓
-2026-09 next-month forecast
-        ↓
-When 2026-09 data is complete: compare forecast with 2026-09 observed recommendation
-```
+1. **Fix the income claim.** A live test returned "ranks highest for suitability and income" for rice while the app's own best income was tomato. Send an explicit fact line, "Highest income among suitable crops: <crop>", and tell the model to quote it and never to rank income itself.
+2. **Send only the facts shown on screen** for the selected crop and window.
+3. **Never let it change a score.** Text only.
+4. Keep the existing disclaimer ("can make mistakes").
+5. Add a per-IP rate limit (`LIMITER`) before the app goes public; the URL is public and spends the owner's API credit.
 
-## UI changes
+## 11. Risks and limits
 
-Update the Crop Recommendation screen to contain:
+| Risk | Handling |
+|---|---|
+| Seeded data is partly simulated (moisture modelled from rain; soil flat) | Demo banner (section 5). Never present it as real advice. |
+| 8 months is not a seasonal cycle | The grid uses climate normals + forecast, not the 8 months. The months only cross-check. |
+| Probe pH 7.3 vs soil map 5.7 | Existing warning stays; confidence line mentions it. |
+| Salinity (ECe about 3.2 dS/m) dominates scores | Show it as the main risk; it does not vary by month. |
+| `monthlyScores` empty offline | Explicit "needs climate once" state. |
+| Cucumber and garlic rank high on wet soil | Known engine behaviour; section 4 rule 10 and the soil type setting reduce it. Revisit waterlogging weights separately. |
+| Time zone | Months are UTC everywhere in the app; the grid follows the device's current UTC month. |
 
-1. **Next month recommendation** — the primary card, with the target month and `Forecast` label.
-2. **Why this crop** — score, matching fields, limiting fields, data sources, and confidence.
-3. **Monthly history** — one row/card for every eligible `yyyy-MM` month when data exists, including the month, recommended crop, score, and sample count. Group by year if more than 12 months are available.
-4. **Forecast result** — after a month closes, show whether the previous forecast matched the observed recommendation.
-5. **Insufficient data state** — explain that more readings are needed instead of showing a misleading crop.
+## 12. Later (not part of version 1)
 
-Do not present the forecast as certain. Use wording such as “Recommended for October based on August–September data.”
-
-## Implementation phases
-
-### Phase 1: Engine and models
-
-- Add `MonthlyCropRecommendation` and a detailed score-result type.
-- Refactor `SeedRecommendationEngine` so it can return all crop scores, not only the top crop.
-- Add functions for observed-month recommendations and next-month forecasts.
-- Add deterministic tie-breaking and confidence calculation.
-- Keep the current seven-field scoring behavior unchanged as the baseline.
-
-### Phase 2: State and data flow
-
-- Update `CropCastUiState` to expose all monthly recommendations and the next-month forecast.
-- Update `CropCastViewModel` to build recommendations from every monthly summary instead of only `monthlySummary`.
-- Add repository read/write methods for persisted recommendations, with local calculation as a fallback.
-- Reuse the existing 12-month demo history and add demo assertions for the history and next-month forecast states.
-
-### Phase 3: UI
-
-- Update `SeedsScreen` for the next-month card, explanation, history list, and insufficient-data state.
-- Add localized strings for observed recommendation, forecast, confidence, sample count, and forecast comparison.
-- Show the recommendation month explicitly to avoid confusing current-month data with next-month advice.
-
-### Phase 4: Data quality and calibration
-
-- Validate timestamp, sample count, duplicate readings, and missing sensor fields.
-- Ensure a Firebase month key matches the reading timestamp month, using UTC and `YearMonth` rather than ad hoc string arithmetic.
-- Confirm that NPK Firebase readings use the same unit assumptions as the crop requirement ranges.
-- Calibrate soil-moisture ranges locally and replace the provisional values.
-- Keep light out of scoring until a defensible lux-to-radiation relationship is available.
-- Continue evaluating the implemented farm-outcome records against normalized field area and yield units before allowing harvest weight to influence recommendation scores.
-- Keep the processed tomato dataset as an offline calibration/evaluation input until a documented mapping to Firebase fields and units exists.
-
-## Tests and acceptance criteria
-
-Add unit tests for:
-
-- One eligible month produces exactly one observed recommendation.
-- Multiple months produce one recommendation per month in descending month order.
-- The newest eligible month produces a forecast for the following calendar month.
-- The current UTC month is treated as month-to-date and is not used as a completed-month result.
-- Same-calendar-month history is used when available.
-- Missing historical signals redistribute weights without changing the 0–100 score bounds.
-- Months below the sample threshold are excluded and do not produce a recommendation.
-- Invalid timestamps and incomplete readings are ignored consistently.
-- Missing Firebase child fields are not silently converted to valid zero readings.
-- Ties are deterministic and follow the existing crop-profile order.
-- A forecast can be compared with the later observed recommendation.
-- Existing Potato and Rice fixtures still recommend their target crop.
-
-The feature is complete when:
-
-- Every eligible month has an observed crop recommendation.
-- The app always shows the next target month for the forecast.
-- The forecast explains which past months were used.
-- The farmer can review the month-by-month history.
-- Low-data and calibration warnings are visible.
-- Existing recommendation tests and the full debug unit-test suite pass.
-
-## Suggested delivery order
-
-1. Implement all-score output and monthly recommendation models.
-2. Add observed-month and next-month forecast calculations.
-3. Add ViewModel state and local fallback behavior.
-4. Add Firebase persistence and rules only after local calculations are verified.
-5. Build the history and next-month UI.
-6. Add tests, demo fixtures, and calibration/data-quality warnings.
+- Record real outcomes (the app already stores them) and compare predicted vs actual per crop.
+- After 1-2 years of real readings, fit local corrections; only then consider a trained model.
+- Per-owner Firebase rules (`devices/$id/owner`) and a short-lived PIN that claims a long random device id.
+- Real soil photos in the soil type picker.

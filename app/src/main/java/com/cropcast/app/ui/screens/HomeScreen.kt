@@ -20,6 +20,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +41,8 @@ import com.cropcast.app.data.model.MonthlyCropRecommendation
 import com.cropcast.app.ui.CropCastUiState
 import com.cropcast.app.ui.components.RoundedCard
 import com.cropcast.app.ui.components.SectionTitle
+import com.cropcast.app.ui.components.SensorInfo
+import com.cropcast.app.ui.components.SensorInfoDialog
 import com.cropcast.app.ui.components.StatusPill
 import com.cropcast.app.ui.localization.tr
 import com.cropcast.app.ui.theme.CropGreen
@@ -95,7 +101,7 @@ private fun FarmOverviewCard(state: CropCastUiState) {
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        "${tr("Welcome")}, ${state.account.displayName}",
+                        "${tr("Welcome")}, ${tr(state.account.displayName)}",
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 20.sp
@@ -150,16 +156,21 @@ private fun CropThumbnail(recommendation: MonthlyCropRecommendation) {
 @Composable
 private fun KeyConditionsGrid(state: CropCastUiState) {
     val reading = state.reading
+    var info by remember { mutableStateOf<Pair<SensorInfo, String>?>(null) }
+    @Composable
+    fun Card(kind: SensorInfo, value: String, accent: Color, modifier: Modifier) =
+        HomeMetricCard(modifier, kind.icon, tr(kind.title), value, accent) { info = kind to value }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeMetricCard(Modifier.weight(1f), "💧", tr("Soil Moisture"), "${reading.soilMoisture.toInt()}%", CropGreen)
-            HomeMetricCard(Modifier.weight(1f), "🌡️", tr("Temperature"), "%.1f°C".format(reading.temperature), Orange)
+            Card(SensorInfo.SOIL_MOISTURE, "${reading.soilMoisture.toInt()}%", CropGreen, Modifier.weight(1f))
+            Card(SensorInfo.TEMPERATURE, "%.1f°C".format(reading.temperature), Orange, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeMetricCard(Modifier.weight(1f), "🧪", tr("Soil pH"), "%.1f".format(reading.soilPh), Pink)
-            HomeMetricCard(Modifier.weight(1f), "🌫️", tr("Humidity"), "${reading.humidity.toInt()}%", Purple)
+            Card(SensorInfo.SOIL_PH, "%.1f".format(reading.soilPh), Pink, Modifier.weight(1f))
+            Card(SensorInfo.HUMIDITY, "${reading.humidity.toInt()}%", Purple, Modifier.weight(1f))
         }
     }
+    info?.let { (kind, value) -> SensorInfoDialog(kind, value) { info = null } }
 }
 
 @Composable
@@ -168,9 +179,10 @@ private fun HomeMetricCard(
     icon: String,
     label: String,
     value: String,
-    accent: Color
+    accent: Color,
+    onClick: () -> Unit
 ) {
-    RoundedCard(modifier = modifier) {
+    RoundedCard(modifier = modifier, onClick = onClick) {
         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(icon, fontSize = 21.sp)
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -235,7 +247,7 @@ private fun NoticesCard(state: CropCastUiState, activeAlerts: List<AlertEvent>) 
                 NoticeLine("✓", tr("No active alerts"), CropGreen)
             } else {
                 activeAlerts.take(2).forEach { alert ->
-                    NoticeLine("!", alert.message.ifBlank { alert.type }, MaterialTheme.colorScheme.error)
+                    NoticeLine("!", tr(alert.message.ifBlank { alert.type }), MaterialTheme.colorScheme.error)
                 }
             }
             if (!state.status.online && !state.isDemo) {

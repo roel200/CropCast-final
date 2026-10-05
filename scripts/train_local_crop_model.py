@@ -62,6 +62,14 @@ ENGINE_ONLY_NAMES = {
     "Ampalaya": "Bitter gourd *",    # Momordica charantia
     "Sitaw": "Asparagus bean",       # Vigna unguiculata subsp. sesquipedalis
     "Kalabasa": "Pumpkin",           # Cucurbita moschata
+    "Chili": "Hot pepper",           # Capsicum frutescens (siling labuyo)
+    "Onion": "Shallot",              # Allium cepa var. aggregatum: PSA lists red shallot (Sibuyas Tagalog); temperate A. cepa var. cepa maxes at 30 °C
+    "Garlic": "Garlic",
+    "Mungbean": "Mung bean",
+    "Peanut": "Groundnut",
+    "Ginger": "Ginger",
+    "Gabi": "Cocoyam",               # Colocasia esculenta (taro)
+    "Patola": "Ridged gourd *",      # Luffa acutangula
 }
 SOILSSYNC_TO_CROPCAST = {"Corn": "Corn", "Tomato": "Tomato", "Rice": "Rice"}
 

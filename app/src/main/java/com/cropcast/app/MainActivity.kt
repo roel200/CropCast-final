@@ -5,12 +5,26 @@ import android.content.pm.ApplicationInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cropcast.app.data.FirebaseSensorRepository
+import com.cropcast.app.data.LocalPreferences
 import com.cropcast.app.ui.CropCastApp
 import com.cropcast.app.ui.CropCastViewModel
 import com.cropcast.app.ui.CropCastViewModelFactory
+import com.cropcast.app.ui.SplashOverlay
 import com.cropcast.app.ui.theme.CropCastTheme
 
 class MainActivity : ComponentActivity() {
@@ -33,10 +47,20 @@ class MainActivity : ComponentActivity() {
                 val viewModel: CropCastViewModel = viewModel(
                     factory = CropCastViewModelFactory(
                         FirebaseSensorRepository(applicationContext, forceDemo = forceDemo),
-                        demoCrop = demoCrop
+                        demoCrop = demoCrop,
+                        preferences = LocalPreferences(applicationContext)
                     )
                 )
-                CropCastApp(viewModel)
+                // Only on a cold start: rotating or returning to the app skips it.
+                var showSplash by rememberSaveable { mutableStateOf(savedInstanceState == null) }
+                LaunchedEffect(Unit) {
+                    delay(1800L)
+                    showSplash = false
+                }
+                Box(Modifier.fillMaxSize()) {
+                    CropCastApp(viewModel)
+                    AnimatedVisibility(showSplash, exit = fadeOut(tween(450))) { SplashOverlay() }
+                }
             }
         }
     }

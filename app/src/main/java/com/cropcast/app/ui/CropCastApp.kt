@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
@@ -63,6 +65,7 @@ import com.cropcast.app.data.PublicCropRecommendationResult
 import com.cropcast.app.data.RainfallState
 import com.cropcast.app.data.RainfallStatus
 import com.cropcast.app.data.SeedRecommendationEngine
+import com.cropcast.app.data.SoilSurvey
 import com.cropcast.app.data.WeatherRainfallRepository
 import com.cropcast.app.ui.theme.CropGreen
 import com.cropcast.app.ui.theme.CropCastTheme
@@ -143,7 +146,12 @@ fun CropCastApp(viewModel: CropCastViewModel) {
             )
         }
     }
-    val siteRepository = remember(context) { FarmSiteDataRepository(context.cacheDir) }
+    val siteRepository = remember(context) {
+        val survey = runCatching {
+            context.assets.open("iloilo_soil_series.json").bufferedReader().use { SoilSurvey.parse(it.readText()) }
+        }.getOrNull()
+        FarmSiteDataRepository(context.cacheDir, survey)
+    }
     val cropEconomics = remember(context) {
         runCatching {
             context.assets.open("crop_economics.json").bufferedReader().use { FarmSuitabilityEngine.parseEconomics(it.readText()) }
@@ -160,17 +168,19 @@ fun CropCastApp(viewModel: CropCastViewModel) {
         ?: state.monthlySummary.takeIf { it.hasData }?.average
         ?: state.reading.takeIf { it.isValidForRecommendation() }
     val farmRecommendation = remember(
-        farmSoil, siteData, rainfallState.estimate, state.settings.irrigationAvailable, state.settings.currentCrop, coordinates
+        farmSoil, siteData, rainfallState.estimate, state.settings.irrigationAvailable, state.settings.currentCrop, coordinates,
+        state.settings.soilType
     ) {
         FarmSuitabilityEngine.recommend(
             soil = farmSoil,
-            site = siteData,
+            site = FarmSuitabilityEngine.withSoilType(siteData, state.settings.soilType),
             plantingMonth = LocalDate.now().monthValue,
             recentRainMm = rainfallState.estimate?.millimeters,
             irrigated = state.settings.irrigationAvailable,
             latitude = coordinates?.first,
             previousCrop = state.settings.currentCrop,  // the crop in the field now, from Settings
-            economics = cropEconomics
+            economics = cropEconomics,
+            growingCrop = state.settings.currentCrop
         )
     }
     var selected by remember { mutableIntStateOf(0) }
@@ -183,6 +193,11 @@ fun CropCastApp(viewModel: CropCastViewModel) {
             isDemo = state.isDemo,
             message = state.message,
             onLogin = viewModel::login,
+            onRegister = viewModel::register,
+            language = state.settings.language,
+            darkMode = state.settings.darkModeEnabled,
+            onLanguageChange = viewModel::setLanguage,
+            onDarkModeChange = viewModel::setDarkMode,
             onGoogleLogin = viewModel::loginWithGoogle,
             onContinueAsGuest = viewModel::continueAsGuest,
             onMessageShown = viewModel::clearMessage
@@ -198,7 +213,12 @@ fun CropCastApp(viewModel: CropCastViewModel) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             if (!showSettings) {
-                CropCastHeader(isDemo = state.isDemo, onSettingsClick = { showSettings = true })
+                CropCastHeader(
+                    isDemo = state.isDemo,
+                    darkMode = state.settings.darkModeEnabled,
+                    onToggleDarkMode = { viewModel.setDarkMode(!state.settings.darkModeEnabled) },
+                    onSettingsClick = { showSettings = true }
+                )
             }
         },
         bottomBar = {
@@ -235,7 +255,11 @@ fun CropCastApp(viewModel: CropCastViewModel) {
                     onSaveSettings = viewModel::saveSettings,
                     onTestConnection = viewModel::testConnection,
                     onRestartEsp32 = viewModel::restartEsp32,
+                    onStartPairing = viewModel::startPairing,
+                    onCancelPairing = viewModel::cancelPairing,
                     onUpdateAccount = viewModel::updateAccount,
+                    onLanguageChange = viewModel::setLanguage,
+                    onDarkModeChange = viewModel::setDarkMode,
                     onChangePassword = viewModel::changePassword,
                     onSignOut = viewModel::signOut,
                     onMessageShown = viewModel::clearMessage
@@ -296,7 +320,12 @@ fun CropCastApp(viewModel: CropCastViewModel) {
 }
 
 @Composable
-private fun CropCastHeader(isDemo: Boolean, onSettingsClick: () -> Unit) {
+private fun CropCastHeader(
+    isDemo: Boolean,
+    darkMode: Boolean,
+    onToggleDarkMode: () -> Unit,
+    onSettingsClick: () -> Unit
+) {
     Surface(color = MaterialTheme.colorScheme.background) {
         Row(
             modifier = Modifier
@@ -307,7 +336,7 @@ private fun CropCastHeader(isDemo: Boolean, onSettingsClick: () -> Unit) {
         ) {
             Image(
                 painter = painterResource(R.drawable.cropcast_logo),
-                contentDescription = "CropCast logo",
+                contentDescription = tr("CropCast logo"),
                 modifier = Modifier
                     .size(54.dp)
                     .clip(RoundedCornerShape(14.dp)),
@@ -322,9 +351,15 @@ private fun CropCastHeader(isDemo: Boolean, onSettingsClick: () -> Unit) {
                     fontSize = 12.sp
                 )
             }
-            HeaderButton(Icons.Default.Notifications, "Notifications", onClick = {})
+            HeaderButton(
+                if (darkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                tr(if (darkMode) "Switch to light mode" else "Switch to dark mode"),
+                onClick = onToggleDarkMode
+            )
             Spacer(Modifier.size(8.dp))
-            HeaderButton(Icons.Default.Settings, "Settings", onClick = onSettingsClick)
+            HeaderButton(Icons.Default.Notifications, tr("Notifications"), onClick = {})
+            Spacer(Modifier.size(8.dp))
+            HeaderButton(Icons.Default.Settings, tr("Settings"), onClick = onSettingsClick)
         }
     }
 }

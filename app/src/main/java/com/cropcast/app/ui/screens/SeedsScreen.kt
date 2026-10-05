@@ -47,6 +47,7 @@ import com.cropcast.app.data.SeedRecommendationEngine
 import com.cropcast.app.data.model.MonthlyCropRecommendation
 import com.cropcast.app.data.model.MonthlySensorSummary
 import com.cropcast.app.data.model.SeedRecommendation
+import com.cropcast.app.ui.components.CropIcon
 import com.cropcast.app.ui.components.RoundedCard
 import com.cropcast.app.ui.components.SectionTitle
 import com.cropcast.app.ui.localization.tr
@@ -72,6 +73,7 @@ fun SeedsScreen(
         item { SectionTitle("✨", tr("Crop Recommendation")) }
         item { FarmRecommendationCard(farmRecommendation, loadingSiteData) }
         farmRecommendation?.takeIf { it.top != null }?.let { farm ->
+            item { FarmAiAdviceCard(farm) }
             item { FarmFactorsCard(farm) }
             item { NutrientPlanCard(farm) }
             item { FarmNoticesCard(farm) }
@@ -194,8 +196,10 @@ private fun PredictionRow(index: Int, prediction: PublicCropPrediction) {
             fontSize = 16.sp
         )
         Spacer(Modifier.size(10.dp))
+        CropIcon(prediction.cropName, "🌱", 30.dp)
+        Spacer(Modifier.size(10.dp))
         Text(
-            prediction.cropName,
+            tr(prediction.cropName),
             modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
@@ -270,7 +274,7 @@ private fun MlRecommendationSummaryCard(
             )
             if (prediction != null) {
                 Text(
-                    "${tr("Top recommendation")}: ${prediction.cropName}",
+                    "${tr("Top recommendation")}: ${tr(prediction.cropName)}",
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp
@@ -331,7 +335,7 @@ private fun OutcomeFeedbackCard(
             )
             Text(
                 "${tr("Save what was planted and the harvest result for future local validation")}. " +
-                    "${tr("Current recommendation")}: $cropName.",
+                    "${tr("Current recommendation")}: ${tr(cropName)}.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )

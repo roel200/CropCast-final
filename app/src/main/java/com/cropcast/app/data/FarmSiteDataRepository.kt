@@ -55,7 +55,10 @@ data class SoilMap(
     val ph: Double?,
     val clayPct: Double?,
     val sandPct: Double?,
-    val nitrogenGPerKg: Double?
+    val nitrogenGPerKg: Double?,
+    /** Where pH and texture came from, shown beside each factor. */
+    val phSource: String = FarmSiteDataRepository.SOILGRIDS,
+    val textureSource: String = FarmSiteDataRepository.SOILGRIDS
 )
 
 enum class SourceStatus { LIVE, CACHED, UNAVAILABLE }
@@ -75,7 +78,7 @@ data class FarmSiteData(
  * cached on the phone, so a later request without internet reuses the last
  * good copy instead of failing.
  */
-class FarmSiteDataRepository(private val cacheDir: File) {
+class FarmSiteDataRepository(private val cacheDir: File, private val soilSurvey: SoilSurvey? = null) {
 
     /**
      * Emits the site data again as each source arrives, so a slow source (SoilGrids
@@ -91,6 +94,10 @@ class FarmSiteDataRepository(private val cacheDir: File) {
             data = update(data)
             send(data)
         }
+
+        // Local and instant, so it shows while SoilGrids (up to a minute) is still loading.
+        val surveySoil = soilSurvey?.lookup(latitude, longitude)
+        if (surveySoil != null) publish { it.copy(soil = surveySoil) }
 
         launch(Dispatchers.IO) {
             val (status, normals) = fetch(NASA_POWER, location, ::parseNasaPowerClimatology) {
@@ -113,7 +120,7 @@ class FarmSiteDataRepository(private val cacheDir: File) {
                     "&property=phh2o&property=clay&property=sand&property=nitrogen" +
                     "&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean"
             }
-            publish { it.copy(soil = soil, status = it.status + (SOILGRIDS to status)) }
+            publish { it.copy(soil = SoilSurvey.merge(soil, surveySoil), status = it.status + (SOILGRIDS to status)) }
         }
         launch(Dispatchers.IO) {
             val (status, seasonal) = fetch(ECMWF_SEASONAL, location, ::parseSeasonalForecast) {

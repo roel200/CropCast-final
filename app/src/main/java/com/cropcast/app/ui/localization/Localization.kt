@@ -3,7 +3,7 @@ package com.cropcast.app.ui.localization
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 
-val LocalCropCastLanguage = staticCompositionLocalOf { "English" }
+val LocalCropCastLanguage = staticCompositionLocalOf { "Filipino" }
 
 private val hiligaynon = mapOf(
     "Home" to "Balay",
@@ -200,8 +200,13 @@ private val hiligaynon = mapOf(
     ,"Could not save crop outcome" to "Indi matipigan ang resulta sang tanom"
 )
 
-fun localize(english: String, language: String): String =
-    if (language.equals("Hiligaynon", ignoreCase = true)) hiligaynon[english] ?: english else english
+val SUPPORTED_LANGUAGES = listOf("Filipino", "English", "Hiligaynon")
+
+fun localize(english: String, language: String): String = when {
+    language.equals("Filipino", ignoreCase = true) -> translateFilipino(english)
+    language.equals("Hiligaynon", ignoreCase = true) -> hiligaynon[english] ?: english
+    else -> english
+}
 
 @Composable
 fun tr(english: String): String = localize(english, LocalCropCastLanguage.current)

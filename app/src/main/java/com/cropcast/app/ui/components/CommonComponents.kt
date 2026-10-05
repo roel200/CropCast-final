@@ -1,5 +1,6 @@
 package com.cropcast.app.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
@@ -16,12 +18,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cropcast.app.ui.localization.tr
 
 @Composable
 fun SectionTitle(icon: String, title: String) {
@@ -36,15 +45,21 @@ fun SectionTitle(icon: String, title: String) {
 fun RoundedCard(
     modifier: Modifier = Modifier,
     color: Color? = null,
+    onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(22.dp),
-        color = color ?: MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        shadowElevation = 1.dp
-    ) { Box(Modifier.padding(18.dp)) { content() } }
+    val shape = RoundedCornerShape(22.dp)
+    val surfaceColor = color ?: MaterialTheme.colorScheme.surface
+    val border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    if (onClick == null) {
+        Surface(modifier = modifier, shape = shape, color = surfaceColor, border = border, shadowElevation = 1.dp) {
+            Box(Modifier.padding(18.dp)) { content() }
+        }
+    } else {
+        Surface(onClick = onClick, modifier = modifier, shape = shape, color = surfaceColor, border = border, shadowElevation = 1.dp) {
+            Box(Modifier.padding(18.dp)) { content() }
+        }
+    }
 }
 
 @Composable
@@ -54,9 +69,10 @@ fun MetricCard(
     label: String,
     value: String,
     progress: Float,
-    color: Color
+    color: Color,
+    onClick: (() -> Unit)? = null
 ) {
-    RoundedCard(modifier = modifier) {
+    RoundedCard(modifier = modifier, onClick = onClick) {
         Column {
             Text(icon, fontSize = 23.sp)
             Spacer(Modifier.height(8.dp))
@@ -70,6 +86,33 @@ fun MetricCard(
                 color = color,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
+        }
+    }
+}
+
+/** Crop picture from res/drawable (crop_<name>.png) with the crop's emoji when no picture exists yet. */
+@Composable
+fun CropIcon(name: String, emoji: String, size: Dp, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val resource = remember(name) {
+        context.resources.getIdentifier("crop_" + name.trim().lowercase().replace(' ', '_'), "drawable", context.packageName)
+    }
+    Box(
+        modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.28f))
+            .background(if (resource != 0) Color.White else MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center
+    ) {
+        if (resource != 0) {
+            Image(
+                painter = painterResource(resource),
+                contentDescription = tr(name),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(emoji, fontSize = (size.value / 2).sp)
         }
     }
 }

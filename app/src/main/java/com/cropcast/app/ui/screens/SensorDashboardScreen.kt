@@ -1,5 +1,6 @@
 package com.cropcast.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -28,7 +33,10 @@ import com.cropcast.app.ui.MAX_SAMPLE_SPOTS
 import com.cropcast.app.ui.MIN_SAMPLE_SPOTS
 import com.cropcast.app.ui.components.RoundedCard
 import com.cropcast.app.ui.components.MetricCard
+import com.cropcast.app.data.model.SensorReading
 import com.cropcast.app.ui.components.SectionTitle
+import com.cropcast.app.ui.components.SensorInfo
+import com.cropcast.app.ui.components.SensorInfoDialog
 import com.cropcast.app.ui.localization.tr
 import com.cropcast.app.ui.theme.CropGreen
 import com.cropcast.app.ui.theme.DeepGreen
@@ -50,58 +58,83 @@ fun SensorDashboardScreen(
     onClearSpots: () -> Unit
 ) {
     val r = state.reading
+    var info by remember { mutableStateOf<SensorInfo?>(null) }
+    var openMonth by remember { mutableStateOf<String?>(null) }
+    openMonth?.let { month ->
+        MonthDetailScreen(month, state.monthlyReadings[month].orEmpty()) { openMonth = null }
+        return
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { SensorStatusCard(state) }
         item { FieldSampleCard(state, onRecordSpot, onSaveSample, onClearSpots) }
+        item { SectionTitle("📊", tr("Current Conditions")) }
+        item {
+            Text(
+                "👆 ${tr("Tap a card to see what it means")}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+        }
+        item {
+            MetricRow {
+                MetricCard(Modifier.weight(1f), "💧", tr("Soil Moisture"), "${r.soilMoisture.toInt()}%", (r.soilMoisture / 100).toFloat(), CropGreen, onClick = { info = SensorInfo.SOIL_MOISTURE })
+                MetricCard(Modifier.weight(1f), "🌡️", tr("Temperature"), "%.1f°C".format(r.temperature), (r.temperature / 45).toFloat(), Orange, onClick = { info = SensorInfo.TEMPERATURE })
+            }
+        }
+        item {
+            MetricRow {
+                MetricCard(Modifier.weight(1f), "🌫️", tr("Humidity"), "${r.humidity.toInt()}%", (r.humidity / 100).toFloat(), Purple, onClick = { info = SensorInfo.HUMIDITY })
+                MetricCard(Modifier.weight(1f), "🧪", tr("Soil pH"), "%.1f".format(r.soilPh), (r.soilPh / 14).toFloat(), Pink, onClick = { info = SensorInfo.SOIL_PH })
+            }
+        }
+        item {
+            MetricRow {
+                MetricCard(Modifier.weight(1f), "🧬", tr("Nitrogen"), "${r.nitrogen.toInt()} mg/kg", (r.nitrogen / 100).toFloat(), CropGreen, onClick = { info = SensorInfo.NITROGEN })
+                MetricCard(Modifier.weight(1f), "🔬", tr("Phosphorus"), "${r.phosphorus.toInt()} mg/kg", (r.phosphorus / 100).toFloat(), Yellow, onClick = { info = SensorInfo.PHOSPHORUS })
+            }
+        }
+        item {
+            MetricRow {
+                MetricCard(Modifier.weight(1f), "⚡", tr("Potassium"), "${r.potassium.toInt()} mg/kg", (r.potassium / 100).toFloat(), Orange, onClick = { info = SensorInfo.POTASSIUM })
+                MetricCard(Modifier.weight(1f), "☀️", tr("Light Intensity"), "${r.lightIntensity.toInt()} lux", (r.lightIntensity / 1000).toFloat(), Yellow, onClick = { info = SensorInfo.LIGHT })
+            }
+        }
         item { SectionTitle("📅", tr("Monthly Sensor Readings")) }
         if (state.monthlySummaries.isEmpty()) {
             item { EmptyMonthlyCollectionCard() }
         } else {
             items(state.monthlySummaries, key = { it.monthKey }) { summary ->
-                MonthlyReadingCard(summary)
-            }
-        }
-        item { SectionTitle("📊", tr("Current Conditions")) }
-        item {
-            MetricRow {
-                MetricCard(Modifier.weight(1f), "💧", tr("Soil Moisture"), "${r.soilMoisture.toInt()}%", (r.soilMoisture / 100).toFloat(), CropGreen)
-                MetricCard(Modifier.weight(1f), "🌡️", tr("Temperature"), "%.1f°C".format(r.temperature), (r.temperature / 45).toFloat(), Orange)
-            }
-        }
-        item {
-            MetricRow {
-                MetricCard(Modifier.weight(1f), "🌫️", tr("Humidity"), "${r.humidity.toInt()}%", (r.humidity / 100).toFloat(), Purple)
-                MetricCard(Modifier.weight(1f), "🧪", tr("Soil pH"), "%.1f".format(r.soilPh), (r.soilPh / 14).toFloat(), Pink)
-            }
-        }
-        item {
-            MetricRow {
-                MetricCard(Modifier.weight(1f), "🧬", tr("Nitrogen"), "${r.nitrogen.toInt()} mg/kg", (r.nitrogen / 100).toFloat(), CropGreen)
-                MetricCard(Modifier.weight(1f), "🔬", tr("Phosphorus"), "${r.phosphorus.toInt()} mg/kg", (r.phosphorus / 100).toFloat(), Yellow)
-            }
-        }
-        item {
-            MetricRow {
-                MetricCard(Modifier.weight(1f), "⚡", tr("Potassium"), "${r.potassium.toInt()} mg/kg", (r.potassium / 100).toFloat(), Orange)
-                MetricCard(Modifier.weight(1f), "☀️", tr("Light Intensity"), "${r.lightIntensity.toInt()} lux", (r.lightIntensity / 1000).toFloat(), Yellow)
+                MonthlyReadingCard(summary) { openMonth = summary.monthKey }
             }
         }
         item { Spacer(Modifier.height(12.dp)) }
     }
+    info?.let { SensorInfoDialog(it, readingText(it, r)) { info = null } }
+}
+
+private fun readingText(info: SensorInfo, r: SensorReading): String = when (info) {
+    SensorInfo.SOIL_MOISTURE -> "${r.soilMoisture.toInt()}%"
+    SensorInfo.TEMPERATURE -> "%.1f°C".format(r.temperature)
+    SensorInfo.HUMIDITY -> "${r.humidity.toInt()}%"
+    SensorInfo.SOIL_PH -> "%.1f".format(r.soilPh)
+    SensorInfo.NITROGEN -> "${r.nitrogen.toInt()} mg/kg"
+    SensorInfo.PHOSPHORUS -> "${r.phosphorus.toInt()} mg/kg"
+    SensorInfo.POTASSIUM -> "${r.potassium.toInt()} mg/kg"
+    SensorInfo.LIGHT -> "${r.lightIntensity.toInt()} lux"
 }
 
 @Composable
-private fun MonthlyReadingCard(summary: com.cropcast.app.data.model.MonthlySensorSummary) {
+private fun MonthlyReadingCard(summary: com.cropcast.app.data.model.MonthlySensorSummary, onClick: () -> Unit) {
     val average = summary.average
     val monthLabel = runCatching {
         val month = YearMonth.parse(summary.monthKey)
         "${month.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${month.year}"
     }.getOrDefault(tr("Current month"))
 
-    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
+    Surface(modifier = Modifier.clickable(onClick = onClick), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(20.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
@@ -134,6 +167,8 @@ private fun MonthlyReadingCard(summary: com.cropcast.app.data.model.MonthlySenso
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )
+            Spacer(Modifier.height(8.dp))
+            Text("${tr("Tap to see daily readings")} ›", color = CropGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

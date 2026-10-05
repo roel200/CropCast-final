@@ -16,3 +16,11 @@ Kangkong,Kang kong,Ipomoea aquatica For. aqua.,10.0,15.0,35.0,40.0,4.3,5.0,7.0,7
 Ampalaya,Bitter gourd *,Momordica charantia L.,15.0,22.0,30.0,38.0,4.5,6.0,6.5,8.0,1000.0,2000.0,2500.0,4000.0,M O,50.0,70.0,W
 Sitaw,Asparagus bean,Vigna unguiculata sesqui. L,14.0,20.0,35.0,38.0,4.3,5.5,7.0,7.5,650.0,1500.0,2000.0,4100.0,M H,50.0,150.0,I W
 Kalabasa,Pumpkin,Cucurbita moschata (Duch.),10.0,20.0,30.0,40.0,4.5,5.5,7.5,8.3,300.0,600.0,1600.0,2800.0,M O,80.0,140.0,W
+Chili,Hot pepper,Capsicum frutescens L.,7.0,18.0,30.0,40.0,4.3,5.5,6.8,8.3,400.0,600.0,1500.0,2000.0,M O,120.0,180.0,W
+Onion,Shallot,Allium cepa L. v aggregatum,10.0,20.0,25.0,30.0,5.5,6.0,7.0,7.5,300.0,450.0,600.0,1000.0,L O,60.0,100.0,W
+Garlic,Garlic,Allium sativum L.,7.0,18.0,30.0,35.0,5.0,6.0,6.6,8.5,500.0,750.0,1600.0,2700.0,L M,90.0,120.0,W
+Mungbean,Mung bean,Vigna radiata (L.) Wilczek,8.0,21.0,36.0,40.0,4.3,5.5,6.2,8.3,500.0,650.0,900.0,1250.0,M O,50.0,120.0,W E
+Peanut,Groundnut,Arachis hypogaea L.,10.0,22.0,32.0,45.0,4.5,5.5,6.5,8.5,400.0,600.0,1500.0,4000.0,M,90.0,150.0,W
+Ginger,Ginger,Zingiber officinale Rosc.,13.0,19.0,29.0,35.0,4.3,6.0,7.0,7.5,700.0,1400.0,3000.0,4000.0,M O,270.0,365.0,W E
+Gabi,Cocoyam,Colocasia esculenta (L.) S.,10.0,21.0,28.0,35.0,4.3,5.5,6.5,8.2,1000.0,1800.0,2700.0,4100.0,M O,180.0,300.0,I W
+Patola,Ridged gourd *,Luffa acutangula (L.) Roxb.,15.0,20.0,32.0,38.0,4.5,5.5,7.0,7.5,700.0,1200.0,2000.0,3000.0,M O,40.0,150.0,W

@@ -1,8 +1,7 @@
 // Copy this file to secrets.h (gitignored) and fill in your own values.
+// Wi-Fi and the device id are NOT set here any more: the ESP32 gets them from the setup page
+// (pairing). See firmware/CropCastESP32/README.md.
 #pragma once
-
-#define WIFI_SSID "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
 #define FIREBASE_API_KEY "YOUR_FIREBASE_WEB_API_KEY"
 #define FIREBASE_DATABASE_URL "https://YOUR_PROJECT-default-rtdb.firebaseio.com"
@@ -10,7 +9,8 @@
 #define FIREBASE_USER_EMAIL "esp32-device@example.com"
 #define FIREBASE_USER_PASSWORD "CHANGE_ME"
 
-#define DEVICE_ID "esp32-field-01"
+// Optional: WPA2 password (8+ characters) for the setup access point. Empty = open AP.
+// #define CROPCAST_AP_PASSWORD "change-me-please"
 
 // Optional overrides; see section B of CropCastESP32.ino.
 // #define CROPCAST_SENSOR_DHT_ENABLED false

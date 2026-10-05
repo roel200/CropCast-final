@@ -35,11 +35,6 @@
                 "electricalConductivity": { ".validate": "newData.isNumber() && newData.val() >= 0" }
               }
             }
-          },
-          "feedback": {
-            "$feedbackId": {
-              ".validate": "newData.hasChildren(['id','monthKey','recommendedCrop','plantedCrop','harvestedKg','rating','problems','submittedAt']) && newData.child('id').val() == $feedbackId && newData.child('monthKey').isString() && newData.child('recommendedCrop').isString() && newData.child('plantedCrop').isString() && newData.child('harvestedKg').isNumber() && newData.child('harvestedKg').val() >= 0 && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 5 && newData.child('problems').isString() && newData.child('submittedAt').isNumber() && newData.child('submittedAt').val() > 0"
-            }
           }
         },
         "recommendations": {
@@ -52,6 +47,11 @@
               "forecast": {
                 ".validate": "newData.hasChildren(['monthKey','cropName','score','sampleCount','basedOnMonths','recommendationType','confidenceLabel','generatedAt','algorithmVersion']) && newData.child('monthKey').val() == $month && newData.child('recommendationType').val() == 'next_month_forecast' && newData.child('cropName').isString() && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 100 && newData.child('sampleCount').isNumber() && newData.child('sampleCount').val() >= 0 && newData.child('generatedAt').isNumber() && newData.child('algorithmVersion').isString()"
               }
+            }
+          },
+          "feedback": {
+            "$feedbackId": {
+              ".validate": "newData.hasChildren(['monthKey','recommendedCrop','plantedCrop','harvestedKg','rating','problems','submittedAt']) && newData.child('monthKey').isString() && newData.child('recommendedCrop').isString() && newData.child('plantedCrop').isString() && newData.child('harvestedKg').isNumber() && newData.child('harvestedKg').val() >= 0 && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 5 && newData.child('problems').isString() && newData.child('submittedAt').isNumber() && newData.child('submittedAt').val() > 0"
             }
           }
         },

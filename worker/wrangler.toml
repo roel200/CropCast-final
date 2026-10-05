@@ -1,0 +1,14 @@
+name = "cropcast-advice"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+OPENROUTER_MODEL = "google/gemma-4-26b-a4b-it:free"
+OPENROUTER_MODEL_2 = "qwen/qwen3.8-27b:free"
+# Full chat-completions URL and model id, copied from your xKiro dashboard.
+XKIRO_URL = "https://api.xkiro.com/v1"
+XKIRO_MODEL = "mistralai/mistral-small-2603"
+
+# Secrets, not stored here:
+#   npx wrangler secret put OPENROUTER_KEY
+#   npx wrangler secret put XKIRO_KEY

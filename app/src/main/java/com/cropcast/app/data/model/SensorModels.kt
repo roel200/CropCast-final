@@ -74,12 +74,15 @@ data class AlertSettings(
     val deviceName: String = "Field Sensor 01",
     val farmLatitude: String = "",
     val farmLongitude: String = "",
-    val currentCrop: String = "Rice",
-    val cropVariety: String = "IR64",
+    /** Blank = nothing planted; the fertilizer plan then follows the top-ranked crop. */
+    val currentCrop: String = "",
+    val cropVariety: String = "",
     val plantingDate: String = "",
     /** With irrigation, too little rain no longer lowers a crop's score. */
     val irrigationAvailable: Boolean = false,
-    val language: String = "English",
+    /** Soil type the farmer picked ("Clay", "Loam"...); empty = use the soil map. */
+    val soilType: String = "",
+    val language: String = "Filipino",
     val darkModeEnabled: Boolean = false,
     val cloudHistoryEnabled: Boolean = true,
     val diagnosticsEnabled: Boolean = false
@@ -89,7 +92,9 @@ data class AccountInfo(
     val displayName: String = "Guest Farmer",
     val role: String = "Farmer",
     val email: String = "Anonymous account",
-    val isAnonymous: Boolean = true
+    val isAnonymous: Boolean = true,
+    /** ESP32 paired to this account (users/{uid}/deviceId); empty = the build-time default. */
+    val deviceId: String = ""
 )
 
 data class AlertEvent(

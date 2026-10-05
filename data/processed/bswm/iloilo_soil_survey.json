@@ -1,0 +1,21 @@
+{
+  "source": "Iloilo Province soil survey report (BSWM Soil Survey Reports, scanned typescript, PDF 'Iloilo.pdf'), Table 15, p. 75: chemical analysis of available plant nutrients. Transcribed by hand from the scan; values are 1950s-era rapid field-test readings, not modern lab results.",
+  "note": "Strings starting with '<' were typed 'a' meaning 'less than' in the report. Nutrient values are ppm; the report also gives kg/ha per 15 cm, which is 9x the ppm figure and is omitted. Report pH is to the nearest 0.5.",
+  "soils": {
+    "Sta. Rita clay":              {"ph": 6.5, "no3": "2",   "nh3": "3.0", "p": "0.5",  "k": "Low",   "ca": "90"},
+    "Sta. Rita clay loam":         {"ph": 6.0, "no3": "10",  "nh3": "3.0", "p": "1.0",  "k": "Low",   "ca": "70"},
+    "Barotac clay loam":           {"ph": 5.5, "no3": "3",   "nh3": "4.0", "p": "<0.5", "k": "4",     "ca": "20"},
+    "Barotac loam rolling phase":  {"ph": 5.5, "no3": "<2",  "nh3": "8.0", "p": "<0.5", "k": "4",     "ca": "20"},
+    "Umingan fine sandy loam":     {"ph": 6.0, "no3": "10",  "nh3": "6.0", "p": "0.5",  "k": "Low",   "ca": "80"},
+    "Alimodian clay loam":         {"ph": 6.0, "no3": "5",   "nh3": "5.0", "p": "<0.5", "k": "Low",   "ca": "100"},
+    "Alimodian silt loam":         {"ph": 5.0, "no3": "2",   "nh3": "3.0", "p": "0.5",  "k": "Low",   "ca": "30"},
+    "Bantog clay loam":            {"ph": 5.0, "no3": "<2",  "nh3": "6.0", "p": "<0.5", "k": "4",     "ca": "40"},
+    "Faraon clay loam":            {"ph": 6.5, "no3": "12",  "nh3": "5.0", "p": "0.5",  "k": "Low",   "ca": "175"},
+    "Sara sandy loam":             {"ph": 4.0, "no3": "<2",  "nh3": "5.0", "p": "<0.5", "k": "Low",   "ca": "30"},
+    "Sara silt loam":              {"ph": 4.5, "no3": "<2",  "nh3": "8.0", "p": "<4.5", "k": "Low",   "ca": "20"},
+    "San Rafael loam":             {"ph": 5.5, "no3": "<2",  "nh3": "6.0", "p": "<0.5", "k": "Low",   "ca": "70"},
+    "Guimaras clay loam":          {"ph": 5.0, "no3": "<2",  "nh3": "7.0", "p": "<0.5", "k": "Low",   "ca": "40"},
+    "Luisiana loam":               {"ph": 5.5, "no3": "25",  "nh3": "9.0", "p": "0.5",  "k": "11",    "ca": "50"},
+    "Coastal beach sand":          {"ph": 6.0, "no3": "<2",  "nh3": "5.0", "p": "0.5",  "k": "15",    "ca": "100"}
+  }
+}
