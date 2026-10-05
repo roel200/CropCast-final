@@ -1,0 +1,674 @@
+{
+  "app/build.gradle.kts": {
+    "mtime": 1791215585.079138,
+    "seen": 1791215919.8779151,
+    "ast_hash": "289764bb0de97ece80964854b2016090",
+    "semantic_hash": "289764bb0de97ece80964854b2016090"
+  },
+  "app/google-services.json": {
+    "mtime": 1791215585.080201,
+    "seen": 1791215919.8779202,
+    "ast_hash": "e58861d5664d6e578f50a8960ee91ad3",
+    "semantic_hash": "e58861d5664d6e578f50a8960ee91ad3"
+  },
+  "app/src/main/assets/crop_economics.json": {
+    "mtime": 1791215585.0828445,
+    "seen": 1791215919.8779225,
+    "ast_hash": "e9c5610f84e1c808f4bd9a8d5ccdcbc3",
+    "semantic_hash": "e9c5610f84e1c808f4bd9a8d5ccdcbc3"
+  },
+  "app/src/main/assets/iloilo_soil_series.json": {
+    "mtime": 1791215585.0844493,
+    "seen": 1791215919.8779242,
+    "ast_hash": "618b0d35b661ed91908fc4d0f9af2bfa",
+    "semantic_hash": "618b0d35b661ed91908fc4d0f9af2bfa"
+  },
+  "app/src/main/java/com/cropcast/app/CropCastApplication.kt": {
+    "mtime": 1790505898.1698027,
+    "seen": 1791198001.9740841,
+    "ast_hash": "437bd81c6157f0505cf5624148b76de8",
+    "semantic_hash": "437bd81c6157f0505cf5624148b76de8"
+  },
+  "app/src/main/java/com/cropcast/app/MainActivity.kt": {
+    "mtime": 1791215585.086033,
+    "seen": 1791215919.877929,
+    "ast_hash": "54d8aec19011c970b8320d27c915710f",
+    "semantic_hash": "54d8aec19011c970b8320d27c915710f"
+  },
+  "app/src/main/java/com/cropcast/app/data/FarmAdviceRepository.kt": {
+    "mtime": 1791215585.086562,
+    "seen": 1791215919.8779304,
+    "ast_hash": "74063e1b7ff4b474605f107891085d9d",
+    "semantic_hash": "74063e1b7ff4b474605f107891085d9d"
+  },
+  "app/src/main/java/com/cropcast/app/data/FarmSiteDataRepository.kt": {
+    "mtime": 1791215585.0876195,
+    "seen": 1791215919.8779316,
+    "ast_hash": "a5c11b3d6d3d7f1bed4c4708d34e1502",
+    "semantic_hash": "a5c11b3d6d3d7f1bed4c4708d34e1502"
+  },
+  "app/src/main/java/com/cropcast/app/data/FarmSuitabilityEngine.kt": {
+    "mtime": 1791215585.0886793,
+    "seen": 1791215919.8779328,
+    "ast_hash": "115ceb6bb05e9860f7fab534226a4519",
+    "semantic_hash": "115ceb6bb05e9860f7fab534226a4519"
+  },
+  "app/src/main/java/com/cropcast/app/data/FirebaseSensorRepository.kt": {
+    "mtime": 1791215585.0892048,
+    "seen": 1791215919.8779337,
+    "ast_hash": "c8936be093720b1ac9389f143a0ec9c9",
+    "semantic_hash": "c8936be093720b1ac9389f143a0ec9c9"
+  },
+  "app/src/main/java/com/cropcast/app/data/GoogleSignIn.kt": {
+    "mtime": 1790505898.1708038,
+    "seen": 1791198001.9740913,
+    "ast_hash": "70a24c8e41aeaf5b62aad5c165bf57b8",
+    "semantic_hash": "70a24c8e41aeaf5b62aad5c165bf57b8"
+  },
+  "app/src/main/java/com/cropcast/app/data/PublicCropModelEngine.kt": {
+    "mtime": 1790505898.1733382,
+    "seen": 1791198001.9740925,
+    "ast_hash": "067f55eaf25bf4e66f6bb781b691949e",
+    "semantic_hash": "067f55eaf25bf4e66f6bb781b691949e"
+  },
+  "app/src/main/java/com/cropcast/app/data/SeedRecommendationEngine.kt": {
+    "mtime": 1790643765.9268453,
+    "seen": 1791198001.9740937,
+    "ast_hash": "4fb7ac56efb3f07ed863768242a4e875",
+    "semantic_hash": "4fb7ac56efb3f07ed863768242a4e875"
+  },
+  "app/src/main/java/com/cropcast/app/data/SoilSurvey.kt": {
+    "mtime": 1791215585.0913148,
+    "seen": 1791215919.8779445,
+    "ast_hash": "3772a024c5c42cb97eb2eb7a2ca1110d",
+    "semantic_hash": "3772a024c5c42cb97eb2eb7a2ca1110d"
+  },
+  "app/src/main/java/com/cropcast/app/data/WeatherRainfallRepository.kt": {
+    "mtime": 1790643765.9268453,
+    "seen": 1791198001.9740956,
+    "ast_hash": "4bd38f10fa034e1c5c164c7d151ff7f1",
+    "semantic_hash": "4bd38f10fa034e1c5c164c7d151ff7f1"
+  },
+  "app/src/main/java/com/cropcast/app/data/model/SensorModels.kt": {
+    "mtime": 1791215585.0923574,
+    "seen": 1791215919.8779476,
+    "ast_hash": "ce7f4251a950eb36ce179c912404ff25",
+    "semantic_hash": "ce7f4251a950eb36ce179c912404ff25"
+  },
+  "app/src/main/java/com/cropcast/app/ui/CropCastApp.kt": {
+    "mtime": 1791215585.093409,
+    "seen": 1791215919.8779492,
+    "ast_hash": "38ee86d97bcb2bd6777798c9f21aadf2",
+    "semantic_hash": "38ee86d97bcb2bd6777798c9f21aadf2"
+  },
+  "app/src/main/java/com/cropcast/app/ui/CropCastViewModel.kt": {
+    "mtime": 1791215585.0944517,
+    "seen": 1791215919.8779502,
+    "ast_hash": "0f5870746b1481980c830842c7f50a1a",
+    "semantic_hash": "0f5870746b1481980c830842c7f50a1a"
+  },
+  "app/src/main/java/com/cropcast/app/ui/components/CommonComponents.kt": {
+    "mtime": 1791215585.096565,
+    "seen": 1791215919.8779523,
+    "ast_hash": "84b8b21ea10cc8ba499429c0152d14a0",
+    "semantic_hash": "84b8b21ea10cc8ba499429c0152d14a0"
+  },
+  "app/src/main/java/com/cropcast/app/ui/localization/Localization.kt": {
+    "mtime": 1791215585.1008885,
+    "seen": 1791215919.8779564,
+    "ast_hash": "740995bd370c8c69e8cb02e1f499ca2a",
+    "semantic_hash": "740995bd370c8c69e8cb02e1f499ca2a"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/FarmRecommendationCards.kt": {
+    "mtime": 1791215585.1024568,
+    "seen": 1791215919.877958,
+    "ast_hash": "723517da591f20e8494b96ca24dd16d7",
+    "semantic_hash": "723517da591f20e8494b96ca24dd16d7"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/HomeScreen.kt": {
+    "mtime": 1791215585.1035295,
+    "seen": 1791215919.8779593,
+    "ast_hash": "6e75dc55069eaebc5368c11cd95c3403",
+    "semantic_hash": "6e75dc55069eaebc5368c11cd95c3403"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/LoginScreen.kt": {
+    "mtime": 1791215585.104579,
+    "seen": 1791215919.8779604,
+    "ast_hash": "f6b1eb09ec504b3f52995a9c3ccc5014",
+    "semantic_hash": "f6b1eb09ec504b3f52995a9c3ccc5014"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/SeedsScreen.kt": {
+    "mtime": 1791215585.1067324,
+    "seen": 1791215919.8779624,
+    "ast_hash": "179776ede0c4d82c76ea20295efb4d2d",
+    "semantic_hash": "179776ede0c4d82c76ea20295efb4d2d"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/SensorDashboardScreen.kt": {
+    "mtime": 1791215585.1077864,
+    "seen": 1791215919.8779635,
+    "ast_hash": "471678f1a95030a9a91aad9ad4091fe0",
+    "semantic_hash": "471678f1a95030a9a91aad9ad4091fe0"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/SettingsScreen.kt": {
+    "mtime": 1791215585.1088545,
+    "seen": 1791215919.8779647,
+    "ast_hash": "64bbca6f7fb8962f9fb91a82300c6c24",
+    "semantic_hash": "64bbca6f7fb8962f9fb91a82300c6c24"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/WaterScreen.kt": {
+    "mtime": 1790505898.1813574,
+    "seen": 1791198001.9741094,
+    "ast_hash": "38436d1afaec3cb3f98e2b1b66f445be",
+    "semantic_hash": "38436d1afaec3cb3f98e2b1b66f445be"
+  },
+  "app/src/main/java/com/cropcast/app/ui/theme/Theme.kt": {
+    "mtime": 1790505898.1813574,
+    "seen": 1791198001.9741106,
+    "ast_hash": "cfe3a3c182e1155cd520a45888bdb634",
+    "semantic_hash": "cfe3a3c182e1155cd520a45888bdb634"
+  },
+  "app/src/test/java/com/cropcast/app/data/AdviceCasesTest.kt": {
+    "mtime": 1791215585.123078,
+    "seen": 1791215919.8779685,
+    "ast_hash": "2bcc5589baea6eb119417b490c87980a",
+    "semantic_hash": "2bcc5589baea6eb119417b490c87980a"
+  },
+  "app/src/test/java/com/cropcast/app/data/FarmAdviceRepositoryTest.kt": {
+    "mtime": 1791215585.1236012,
+    "seen": 1791215919.8779695,
+    "ast_hash": "6b6fc476adf940fcb7c5352ec92914b9",
+    "semantic_hash": "6b6fc476adf940fcb7c5352ec92914b9"
+  },
+  "app/src/test/java/com/cropcast/app/data/FarmAdviceTest.kt": {
+    "mtime": 1791215585.1246989,
+    "seen": 1791215919.8779705,
+    "ast_hash": "24046a4dbce3d98b208a666f2b48dbed",
+    "semantic_hash": "24046a4dbce3d98b208a666f2b48dbed"
+  },
+  "app/src/test/java/com/cropcast/app/data/FarmForecastTest.kt": {
+    "mtime": 1790643765.933876,
+    "seen": 1791198001.9741173,
+    "ast_hash": "7b118c4e792aa44a605441826c650643",
+    "semantic_hash": "7b118c4e792aa44a605441826c650643"
+  },
+  "app/src/test/java/com/cropcast/app/data/FarmKnownAnswerTest.kt": {
+    "mtime": 1790643765.933876,
+    "seen": 1791198001.9741194,
+    "ast_hash": "a80d26221cb957f266c708f8bfb2e34c",
+    "semantic_hash": "a80d26221cb957f266c708f8bfb2e34c"
+  },
+  "app/src/test/java/com/cropcast/app/data/FarmRealWorldValidationTest.kt": {
+    "mtime": 1791215585.1252213,
+    "seen": 1791215919.8779747,
+    "ast_hash": "bc53f05cfb5d7d39e5d1886c2eeee8f1",
+    "semantic_hash": "bc53f05cfb5d7d39e5d1886c2eeee8f1"
+  },
+  "app/src/test/java/com/cropcast/app/data/FarmSuitabilityEngineTest.kt": {
+    "mtime": 1791215585.1262753,
+    "seen": 1791215919.8779757,
+    "ast_hash": "083320b9f7c51a5419dfb5d0ea0e4d8a",
+    "semantic_hash": "083320b9f7c51a5419dfb5d0ea0e4d8a"
+  },
+  "app/src/test/java/com/cropcast/app/data/PublicCropModelEngineTest.kt": {
+    "mtime": 1790505898.1945937,
+    "seen": 1791198001.9741244,
+    "ast_hash": "310070ce7d130a1fb6930ac81d33ebd6",
+    "semantic_hash": "310070ce7d130a1fb6930ac81d33ebd6"
+  },
+  "app/src/test/java/com/cropcast/app/data/SeedRecommendationEngineTest.kt": {
+    "mtime": 1790505898.1955926,
+    "seen": 1791198001.9741263,
+    "ast_hash": "1c1d892300264ff9ea01c387de49444c",
+    "semantic_hash": "1c1d892300264ff9ea01c387de49444c"
+  },
+  "app/src/test/java/com/cropcast/app/data/SoilSurveyTest.kt": {
+    "mtime": 1791215585.1283753,
+    "seen": 1791215919.8779814,
+    "ast_hash": "b7e74375b1ae4438838d4c10f1b69448",
+    "semantic_hash": "b7e74375b1ae4438838d4c10f1b69448"
+  },
+  "app/src/test/java/com/cropcast/app/ui/localization/LocalizationTest.kt": {
+    "mtime": 1791215585.1294472,
+    "seen": 1791215919.8779836,
+    "ast_hash": "932bb10e0cc5d073e6e66b9c015e14d7",
+    "semantic_hash": "932bb10e0cc5d073e6e66b9c015e14d7"
+  },
+  "build.gradle.kts": {
+    "mtime": 1790505898.1965916,
+    "seen": 1791198001.9741297,
+    "ast_hash": "7f14a2c730040a86297521e0eef126d7",
+    "semantic_hash": "7f14a2c730040a86297521e0eef126d7"
+  },
+  "data/processed/bswm/iloilo_soil_survey.json": {
+    "mtime": 1791215585.1330678,
+    "seen": 1791215919.8779862,
+    "ast_hash": "f7140db06cf44c9d501a8d82cbb32833",
+    "semantic_hash": "f7140db06cf44c9d501a8d82cbb32833"
+  },
+  "data/processed/crop_requirements_selected.json": {
+    "mtime": 1790505898.2026215,
+    "seen": 1791198001.9741333,
+    "ast_hash": "58e595f6540220ca8ebd4468ef28d115",
+    "semantic_hash": "58e595f6540220ca8ebd4468ef28d115"
+  },
+  "data/validation/sites.json": {
+    "mtime": 1791215585.1904943,
+    "seen": 1791215919.8779905,
+    "ast_hash": "b1515e6a3b6b1f65fb261f3cbe2eea6f",
+    "semantic_hash": "b1515e6a3b6b1f65fb261f3cbe2eea6f"
+  },
+  "firebase/alugbati-test-data.json": {
+    "mtime": 1790505898.2146537,
+    "seen": 1791198001.974136,
+    "ast_hash": "f696ece62910a2afcfbaf71bc7276376",
+    "semantic_hash": "f696ece62910a2afcfbaf71bc7276376"
+  },
+  "firebase/cabbage-test-data.json": {
+    "mtime": 1790505898.2146537,
+    "seen": 1791198001.974137,
+    "ast_hash": "1b167e8678c9f3098295f252bd8e1cd2",
+    "semantic_hash": "1b167e8678c9f3098295f252bd8e1cd2"
+  },
+  "firebase/corn-test-data.json": {
+    "mtime": 1790505898.2166586,
+    "seen": 1791198001.9741383,
+    "ast_hash": "6b5c92b86d715a83d9669041d3047683",
+    "semantic_hash": "6b5c92b86d715a83d9669041d3047683"
+  },
+  "firebase/cucumber-test-data.json": {
+    "mtime": 1790505898.2166586,
+    "seen": 1791198001.9741395,
+    "ast_hash": "a043c801361aca573fe5b7bb6d9d9537",
+    "semantic_hash": "a043c801361aca573fe5b7bb6d9d9537"
+  },
+  "firebase/database.rules.json": {
+    "mtime": 1791215585.1938064,
+    "seen": 1791215919.8779988,
+    "ast_hash": "960e64ad99fb658713323d266c909093",
+    "semantic_hash": "960e64ad99fb658713323d266c909093"
+  },
+  "firebase/eggplant-test-data.json": {
+    "mtime": 1790505898.2176595,
+    "seen": 1791198001.9741418,
+    "ast_hash": "292ef318c005026ee241ea193c599eb2",
+    "semantic_hash": "292ef318c005026ee241ea193c599eb2"
+  },
+  "firebase/lettuce-test-data.json": {
+    "mtime": 1790505898.2186575,
+    "seen": 1791198001.9741433,
+    "ast_hash": "6cd2d38d6d7f64de47bc14909c8eedbe",
+    "semantic_hash": "6cd2d38d6d7f64de47bc14909c8eedbe"
+  },
+  "firebase/okra-test-data.json": {
+    "mtime": 1790505898.2186575,
+    "seen": 1791198001.9741445,
+    "ast_hash": "de0e8faba0e63799cfb5410576fca131",
+    "semantic_hash": "de0e8faba0e63799cfb5410576fca131"
+  },
+  "firebase/potato-test-data.json": {
+    "mtime": 1790505898.2196841,
+    "seen": 1791198001.9741452,
+    "ast_hash": "e793a0f674ef919b6dd3f3e3196da7f2",
+    "semantic_hash": "e793a0f674ef919b6dd3f3e3196da7f2"
+  },
+  "firebase/rice-test-data.json": {
+    "mtime": 1790505898.2196841,
+    "seen": 1791198001.9741466,
+    "ast_hash": "970588820a30b0d8481c0321f5f6d8a9",
+    "semantic_hash": "970588820a30b0d8481c0321f5f6d8a9"
+  },
+  "firebase/sample-data.json": {
+    "mtime": 1790505898.2196841,
+    "seen": 1791198001.9741478,
+    "ast_hash": "b51798dcef52423b06dbbeed11b2c2d9",
+    "semantic_hash": "b51798dcef52423b06dbbeed11b2c2d9"
+  },
+  "firebase/spinach-test-data.json": {
+    "mtime": 1790505898.2206814,
+    "seen": 1791198001.9741488,
+    "ast_hash": "6590c52f1bf134304dcd3e249bc44987",
+    "semantic_hash": "6590c52f1bf134304dcd3e249bc44987"
+  },
+  "firebase/sweet-potato-test-data.json": {
+    "mtime": 1790505898.2206814,
+    "seen": 1791198001.9741502,
+    "ast_hash": "259d2ff197ba1afdbdf13ddee34a7240",
+    "semantic_hash": "259d2ff197ba1afdbdf13ddee34a7240"
+  },
+  "firebase/tomato-test-data.json": {
+    "mtime": 1790505898.2206814,
+    "seen": 1791198001.9741511,
+    "ast_hash": "87005623835d0257beeb3aba0fce8b2f",
+    "semantic_hash": "87005623835d0257beeb3aba0fce8b2f"
+  },
+  "firmware/CropCastESP32/secrets.example.h": {
+    "mtime": 1791215585.1996634,
+    "seen": 1791215919.8780146,
+    "ast_hash": "7f25ff52bbdecfb8b722bf192a68c48c",
+    "semantic_hash": "7f25ff52bbdecfb8b722bf192a68c48c"
+  },
+  "gradlew": {
+    "mtime": 1790505898.2256806,
+    "seen": 1791198001.9741533,
+    "ast_hash": "476565859500752920c185422d03839c",
+    "semantic_hash": "476565859500752920c185422d03839c"
+  },
+  "models/local_crop/metrics.json": {
+    "mtime": 1790643765.962616,
+    "seen": 1791198001.9741545,
+    "ast_hash": "8010cec90c5c8a1e422f81aec87c566c",
+    "semantic_hash": "8010cec90c5c8a1e422f81aec87c566c"
+  },
+  "models/public_crop/android_metrics.json": {
+    "mtime": 1790505898.2281866,
+    "seen": 1791198001.9741554,
+    "ast_hash": "1bfffb3983db579b95ddf97ad2a39556",
+    "semantic_hash": "1bfffb3983db579b95ddf97ad2a39556"
+  },
+  "models/public_crop/cross_validation_metrics.json": {
+    "mtime": 1790505898.278674,
+    "seen": 1791198001.9741569,
+    "ast_hash": "033348b94b2c3c73367bb4ca908c5c81",
+    "semantic_hash": "033348b94b2c3c73367bb4ca908c5c81"
+  },
+  "models/public_crop/metrics.json": {
+    "mtime": 1790505898.2796826,
+    "seen": 1791198001.974158,
+    "ast_hash": "a4bd37e4469f9c5ba70e0165a870168e",
+    "semantic_hash": "a4bd37e4469f9c5ba70e0165a870168e"
+  },
+  "scripts/build_crop_economics.py": {
+    "mtime": 1791215585.2044258,
+    "seen": 1791215919.8780224,
+    "ast_hash": "f821ac248fa8417d5f471d9ed5ce2d41",
+    "semantic_hash": "f821ac248fa8417d5f471d9ed5ce2d41"
+  },
+  "scripts/build_iloilo_soil.py": {
+    "mtime": 1791215585.205479,
+    "seen": 1791215919.8780234,
+    "ast_hash": "ef5fb13b7cd5b41f21062b02bca5e22a",
+    "semantic_hash": "ef5fb13b7cd5b41f21062b02bca5e22a"
+  },
+  "scripts/build_validation_data.py": {
+    "mtime": 1791215585.207162,
+    "seen": 1791215919.8780248,
+    "ast_hash": "75a27772b41fe350080c9bd87691ab6a",
+    "semantic_hash": "75a27772b41fe350080c9bd87691ab6a"
+  },
+  "scripts/evaluate_android_public_crop_model.py": {
+    "mtime": 1790505898.2806797,
+    "seen": 1791198001.9741623,
+    "ast_hash": "a3428debe573c7040b4db7de66108f82",
+    "semantic_hash": "a3428debe573c7040b4db7de66108f82"
+  },
+  "scripts/predict_public_crop.py": {
+    "mtime": 1790505898.2816794,
+    "seen": 1791198001.9741638,
+    "ast_hash": "56471ff37d5acc0537c610c98b589f93",
+    "semantic_hash": "56471ff37d5acc0537c610c98b589f93"
+  },
+  "scripts/prepare_cropcast_data.py": {
+    "mtime": 1790505898.2836797,
+    "seen": 1791198001.9741647,
+    "ast_hash": "2298c8645078d0042b51ed0c74f1cd5a",
+    "semantic_hash": "2298c8645078d0042b51ed0c74f1cd5a"
+  },
+  "scripts/run_advice_cases.ps1": {
+    "mtime": 1791215585.209319,
+    "seen": 1791215919.87803,
+    "ast_hash": "2bab24e9e14756a73d70752dac6ae935",
+    "semantic_hash": "2bab24e9e14756a73d70752dac6ae935"
+  },
+  "scripts/seed_crop_test_data.py": {
+    "mtime": 1790505898.2836797,
+    "seen": 1791198001.9741673,
+    "ast_hash": "72939f619f867a01a6e92aee7931b466",
+    "semantic_hash": "72939f619f867a01a6e92aee7931b466"
+  },
+  "scripts/seed_potato_test_data.py": {
+    "mtime": 1790505898.2836797,
+    "seen": 1791198001.9741685,
+    "ast_hash": "10544eae39921d1b97e5212bfd756374",
+    "semantic_hash": "10544eae39921d1b97e5212bfd756374"
+  },
+  "scripts/simulate_firebase_sensor.py": {
+    "mtime": 1790505898.2846813,
+    "seen": 1791198001.9741695,
+    "ast_hash": "34529c0fd27c574365b30d614ee3f0a3",
+    "semantic_hash": "34529c0fd27c574365b30d614ee3f0a3"
+  },
+  "scripts/train_android_public_crop_model.py": {
+    "mtime": 1790505898.2846813,
+    "seen": 1791198001.9741707,
+    "ast_hash": "f1d3fd3149eea9a106196b21cdd323b9",
+    "semantic_hash": "f1d3fd3149eea9a106196b21cdd323b9"
+  },
+  "scripts/train_local_crop_model.py": {
+    "mtime": 1791215585.2151709,
+    "seen": 1791215919.8780406,
+    "ast_hash": "f0200f9540d65649eaa6e464ce6aa3ba",
+    "semantic_hash": "f0200f9540d65649eaa6e464ce6aa3ba"
+  },
+  "scripts/train_public_crop_model.py": {
+    "mtime": 1790505898.285679,
+    "seen": 1791198001.974174,
+    "ast_hash": "182ee5a63315b3170e92e3a0dc8ac4ee",
+    "semantic_hash": "182ee5a63315b3170e92e3a0dc8ac4ee"
+  },
+  "settings.gradle.kts": {
+    "mtime": 1790505898.285679,
+    "seen": 1791198001.9741752,
+    "ast_hash": "dd25f3a9653596bc06a61a2f55d11f4c",
+    "semantic_hash": "dd25f3a9653596bc06a61a2f55d11f4c"
+  },
+  "worker/index.js": {
+    "mtime": 1791215585.2162435,
+    "seen": 1791215919.8780441,
+    "ast_hash": "42e9fea3ac99de6faecf53ebdf049fed",
+    "semantic_hash": "42e9fea3ac99de6faecf53ebdf049fed"
+  },
+  "README.md": {
+    "mtime": 1791086939.3590853,
+    "seen": 1791198001.974181,
+    "ast_hash": "080b7b27b2c9cd1871eac60615a43c74",
+    "semantic_hash": "080b7b27b2c9cd1871eac60615a43c74"
+  },
+  "data/README.md": {
+    "mtime": 1791087612.7479014,
+    "seen": 1791198001.9741828,
+    "ast_hash": "3d44feb886998bcf5140d82f03ff8da0",
+    "semantic_hash": "3d44feb886998bcf5140d82f03ff8da0"
+  },
+  "data/raw/Crop_Requirements.txt": {
+    "mtime": 1790505898.203622,
+    "seen": 1791198001.9741843,
+    "ast_hash": "0966980993de18f060d5f5c452a63b1c",
+    "semantic_hash": "0966980993de18f060d5f5c452a63b1c"
+  },
+  "data/validation/README.md": {
+    "mtime": 1791086939.3600912,
+    "seen": 1791198001.9741852,
+    "ast_hash": "ed45c64cdbf3baa4d2e9e7afd2f1af99",
+    "semantic_hash": "ed45c64cdbf3baa4d2e9e7afd2f1af99"
+  },
+  "firmware/CropCastESP32/README.md": {
+    "mtime": 1791215585.1975222,
+    "seen": 1791215919.878047,
+    "ast_hash": "fc4910c519c910c808406f97f524a5bb",
+    "semantic_hash": "fc4910c519c910c808406f97f524a5bb"
+  },
+  "models/local_crop/README.md": {
+    "mtime": 1790643765.950597,
+    "seen": 1791198001.9741879,
+    "ast_hash": "7676645f11a58fc9082b1f231caa79ac",
+    "semantic_hash": "7676645f11a58fc9082b1f231caa79ac"
+  },
+  "models/public_crop/README.md": {
+    "mtime": 1790505898.2281866,
+    "seen": 1791198001.9741898,
+    "ast_hash": "5f1ce0b053ce184077aef28fa6e6f339",
+    "semantic_hash": "5f1ce0b053ce184077aef28fa6e6f339"
+  },
+  "plan.md": {
+    "mtime": 1791215585.2028399,
+    "seen": 1791215919.8780482,
+    "ast_hash": "a6a0f07894e43d6c8bc73fe876e9ecff",
+    "semantic_hash": "a6a0f07894e43d6c8bc73fe876e9ecff"
+  },
+  "requirements-ml.txt": {
+    "mtime": 1790643765.9658246,
+    "seen": 1791198001.9741924,
+    "ast_hash": "8750b2f5559b54136fb24086c08d47e9",
+    "semantic_hash": "8750b2f5559b54136fb24086c08d47e9"
+  },
+  "Philippine-Vegetable-Industry-Roadmap-2021-2025.pdf": {
+    "mtime": 1790505898.1507502,
+    "seen": 1791198001.9741936,
+    "ast_hash": "69b6bbbbe59a730a03536777a332870b",
+    "semantic_hash": "69b6bbbbe59a730a03536777a332870b"
+  },
+  "texas a&m vegetable requirements.pdf": {
+    "mtime": 1790505898.2876785,
+    "seen": 1791198001.9741957,
+    "ast_hash": "f1b054567e0a4a0f1b9aed64cac5d421",
+    "semantic_hash": "f1b054567e0a4a0f1b9aed64cac5d421"
+  },
+  "app/src/main/res/drawable-nodpi/crop_alugbati.png": {
+    "mtime": 1790505898.1895945,
+    "seen": 1791198001.9741967,
+    "ast_hash": "27d5183350917738e78f37165c4222e5",
+    "semantic_hash": "27d5183350917738e78f37165c4222e5"
+  },
+  "app/src/main/res/drawable-nodpi/cropcast_logo.jpg": {
+    "mtime": 1790505898.1915963,
+    "seen": 1791198001.974198,
+    "ast_hash": "de89bc161c88fa042e573f13ba5c38f4",
+    "semantic_hash": "de89bc161c88fa042e573f13ba5c38f4"
+  },
+  "cropcast-runtime.png": {
+    "mtime": 1790505898.1985922,
+    "seen": 1791198001.9741993,
+    "ast_hash": "09f223a6fcd771cea9c8cd0bb88a9a02",
+    "semantic_hash": "09f223a6fcd771cea9c8cd0bb88a9a02"
+  },
+  "cropcast-settings-runtime.png": {
+    "mtime": 1790505898.1996248,
+    "seen": 1791198001.9742002,
+    "ast_hash": "d41109b7fe99cdfc51afb92eba7a9d9b",
+    "semantic_hash": "d41109b7fe99cdfc51afb92eba7a9d9b"
+  },
+  "app/src/main/java/com/cropcast/app/data/LocalPreferences.kt": {
+    "mtime": 1791215585.090258,
+    "seen": 1791215919.877938,
+    "ast_hash": "156c1ad688f7473a771b4c6f52074f9a",
+    "semantic_hash": "156c1ad688f7473a771b4c6f52074f9a"
+  },
+  "app/src/main/java/com/cropcast/app/data/PairingCode.kt": {
+    "mtime": 1791215585.0907931,
+    "seen": 1791215919.8779392,
+    "ast_hash": "3ee57fb91b46a1e4693baaf5e6f8b8dd",
+    "semantic_hash": "3ee57fb91b46a1e4693baaf5e6f8b8dd"
+  },
+  "app/src/main/java/com/cropcast/app/ui/SplashOverlay.kt": {
+    "mtime": 1791215585.0955126,
+    "seen": 1791215919.877951,
+    "ast_hash": "52bc9feac23315eab1ea2eaf5de54888",
+    "semantic_hash": "52bc9feac23315eab1ea2eaf5de54888"
+  },
+  "app/src/main/java/com/cropcast/app/ui/components/SensorInfoDialog.kt": {
+    "mtime": 1791215585.0970874,
+    "seen": 1791215919.8779533,
+    "ast_hash": "32e5d596c5c54dfa30bd544f34b2dc5f",
+    "semantic_hash": "32e5d596c5c54dfa30bd544f34b2dc5f"
+  },
+  "app/src/main/java/com/cropcast/app/ui/localization/FilipinoDynamic.kt": {
+    "mtime": 1791215585.0981479,
+    "seen": 1791215919.8779542,
+    "ast_hash": "bfe5a5411982194fbe479a70a22fc623",
+    "semantic_hash": "bfe5a5411982194fbe479a70a22fc623"
+  },
+  "app/src/main/java/com/cropcast/app/ui/localization/FilipinoStrings.kt": {
+    "mtime": 1791215585.0992825,
+    "seen": 1791215919.877955,
+    "ast_hash": "808dad40c3f454dd78f722dfaaf016d3",
+    "semantic_hash": "808dad40c3f454dd78f722dfaaf016d3"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/FarmLocationPicker.kt": {
+    "mtime": 1791215585.1014116,
+    "seen": 1791215919.877957,
+    "ast_hash": "89a5788e3c79ad61bd86be11212d0ee6",
+    "semantic_hash": "89a5788e3c79ad61bd86be11212d0ee6"
+  },
+  "app/src/main/java/com/cropcast/app/ui/screens/MonthDetailScreen.kt": {
+    "mtime": 1791215585.1056356,
+    "seen": 1791215919.8779612,
+    "ast_hash": "deff497bca59d72c1cdb15be5bd4cdc2",
+    "semantic_hash": "deff497bca59d72c1cdb15be5bd4cdc2"
+  },
+  "app/src/test/java/com/cropcast/app/data/FilipinoCoverageTest.kt": {
+    "mtime": 1791215585.1273248,
+    "seen": 1791215919.877977,
+    "ast_hash": "4c87b1661297466edace74a8d9fe22f1",
+    "semantic_hash": "4c87b1661297466edace74a8d9fe22f1"
+  },
+  "app/src/test/java/com/cropcast/app/data/PairingCodeTest.kt": {
+    "mtime": 1791215585.127849,
+    "seen": 1791215919.877978,
+    "ast_hash": "65798ce56b7f815b8ff0f9802494e1b3",
+    "semantic_hash": "65798ce56b7f815b8ff0f9802494e1b3"
+  },
+  "app/src/test/java/com/cropcast/app/data/SoilTypeTest.kt": {
+    "mtime": 1791215585.1288893,
+    "seen": 1791215919.8779824,
+    "ast_hash": "4eabe626631cbf491feaae17ccb1668b",
+    "semantic_hash": "4eabe626631cbf491feaae17ccb1668b"
+  },
+  "data/validation/llm_compare_cases.json": {
+    "mtime": 1791215585.1874096,
+    "seen": 1791215919.877989,
+    "ast_hash": "657fe70ad8fc3be745cd64527efe899d",
+    "semantic_hash": "657fe70ad8fc3be745cd64527efe899d"
+  },
+  "firmware/CropCastESP32/portal_logo.h": {
+    "mtime": 1791215585.1985934,
+    "seen": 1791215919.8780131,
+    "ast_hash": "f706dafe0b526b00cc0bcf2e7ce7267d",
+    "semantic_hash": "f706dafe0b526b00cc0bcf2e7ce7267d"
+  },
+  "scripts/seed_alugbati_demo.py": {
+    "mtime": 1791215585.2103884,
+    "seen": 1791215919.878031,
+    "ast_hash": "a6bad9246040825cc05c0711420d6fe1",
+    "semantic_hash": "a6bad9246040825cc05c0711420d6fe1"
+  },
+  "scripts/seed_demo_history.py": {
+    "mtime": 1791215585.2114387,
+    "seen": 1791215919.8780336,
+    "ast_hash": "416a9ec39b77ff85bfbca1559a1d2f66",
+    "semantic_hash": "416a9ec39b77ff85bfbca1559a1d2f66"
+  },
+  "scripts/seed_llm_compare_cases.py": {
+    "mtime": 1791215585.2125185,
+    "seen": 1791215919.8780346,
+    "ast_hash": "5a821056396d2ea1796e52b72f599cc2",
+    "semantic_hash": "5a821056396d2ea1796e52b72f599cc2"
+  },
+  "scripts/test_ai_providers.py": {
+    "mtime": 1791215585.2135947,
+    "seen": 1791215919.8780382,
+    "ast_hash": "7f72297a86ab4225ba6ac193e51ea944",
+    "semantic_hash": "7f72297a86ab4225ba6ac193e51ea944"
+  },
+  "AGENTS.md": {
+    "mtime": 1791215734.3803449,
+    "seen": 1791215919.8780448,
+    "ast_hash": "a23d1645fee84001535e1fbf6e0c4c4c",
+    "semantic_hash": "a23d1645fee84001535e1fbf6e0c4c4c"
+  },
+  "docs/plan-monthly-recommendation.md": {
+    "mtime": 1791215585.1921706,
+    "seen": 1791215919.878046,
+    "ast_hash": "7d618eba03b24605311c23a5dadaaa21",
+    "semantic_hash": "7d618eba03b24605311c23a5dadaaa21"
+  }
+}
