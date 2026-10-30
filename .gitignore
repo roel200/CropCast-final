@@ -27,3 +27,4 @@ worker/.dev.vars
 data/seed_demo_history.json
 data/raw/bswm/*.pdf
 functions/node_modules/
+graphify-out/20*/
