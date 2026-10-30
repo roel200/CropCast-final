@@ -99,6 +99,12 @@ Last updated 2026-10-05. "Verified" means I saw it work on the real phone or in 
 
 | Area | Why unverified |
 |---|---|
+| My Crop tab (`MyCropScreen`, `MyCropAdvisor`; ported from the My Crop prototype) | Logic and Filipino coverage pass JVM tests (`MyCropAdvisorTest`). Never installed or looked at on a phone. |
+
+Older items:
+
+| Area | Why unverified |
+|---|---|
 | ESP32 firmware pairing (AP, setup page, flash storage, BOOT hold, `pair`) | Never compiled or flashed by me. The setup page HTML was checked only in a desktop browser. |
 | `scripts/test_ai_providers.py` | Needs the user's API keys; not run |
 | Both LLM providers individually | The worker fell back correctly, but which provider answered is unknown (`wrangler tail` shows it) |

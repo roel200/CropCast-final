@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LightMode
@@ -67,6 +68,7 @@ import com.cropcast.app.data.RainfallStatus
 import com.cropcast.app.data.SeedRecommendationEngine
 import com.cropcast.app.data.SoilSurvey
 import com.cropcast.app.data.WeatherRainfallRepository
+import com.cropcast.app.ui.screens.MyCropScreen
 import com.cropcast.app.ui.theme.CropGreen
 import com.cropcast.app.ui.theme.CropCastTheme
 import com.cropcast.app.ui.localization.LocalCropCastLanguage
@@ -207,6 +209,7 @@ fun CropCastApp(viewModel: CropCastViewModel) {
     val items = listOf(
         NavItem(tr("Home"), Icons.Default.Home),
         NavItem(tr("Crop Recommendation"), Icons.Default.AutoAwesome),
+        NavItem(tr("My Crop"), Icons.Default.Eco),
         NavItem(tr("Sensor"), Icons.Default.Sensors)
     )
     Scaffold(
@@ -271,7 +274,7 @@ fun CropCastApp(viewModel: CropCastViewModel) {
                         farmRecommendation = farmRecommendation,
                         loadingSiteData = loadingSiteData,
                         onOpenRecommendations = { selected = 1 },
-                        onOpenSensors = { selected = 2 }
+                        onOpenSensors = { selected = 3 }
                     )
                     1 -> SeedsScreen(
                         farmRecommendation = farmRecommendation,
@@ -304,6 +307,14 @@ fun CropCastApp(viewModel: CropCastViewModel) {
                                 modelVariant = variant
                             )
                         }
+                    )
+                    2 -> MyCropScreen(
+                        cropName = state.settings.currentCrop,
+                        plantingDate = state.settings.plantingDate,
+                        reading = state.monthlySummary.takeIf { it.hasData }?.average ?: state.reading,
+                        readingNote = tr(if (state.monthlySummary.hasData) "Readings: average of the latest month from your device." else "Readings: the latest live reading.") +
+                            if (state.isDemo) " " + tr("Demo data: soil values are simulated.") else "",
+                        onOpenSettings = { showSettings = true }
                     )
                     else -> SensorDashboardScreen(
                         state = state,

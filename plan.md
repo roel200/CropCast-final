@@ -1,5 +1,7 @@
 # CropCast Prediction tab: plan
 
+Note 2026-10-30: the **My Crop** tab now exists as the third tab (Home, Crop Recommendation, My Crop, Sensor). Prediction becomes the fifth tab; update `onOpenSensors` indexes in `CropCastApp.kt` when adding it.
+
 Status: **planned, not built.** Date of this plan: 2026-10-05. The earlier monthly-recommendation plan was delivered; it is kept in `docs/plan-monthly-recommendation.md`.
 
 ## 1. Goal
