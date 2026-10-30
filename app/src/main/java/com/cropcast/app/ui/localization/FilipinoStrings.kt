@@ -595,4 +595,7 @@ internal val FILIPINO: Map<String, String> = mapOf(
     ,"Plan the harvest" to "Planuhin ang ani"
     ,"Harvest is close." to "Malapit na ang ani."
     ,"Line up buyers and sacks this week." to "Ihanda ang mga mamimili at sako ngayong linggo."
+    ,"Farm alerts" to "Mga alerto sa bukid"
+    ,"CropCast farm alert" to "Alerto sa bukid mula sa CropCast"
+    ,"Mark read" to "Markahang nabasa"
 )

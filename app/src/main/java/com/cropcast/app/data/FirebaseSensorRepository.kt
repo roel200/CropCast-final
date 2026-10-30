@@ -18,6 +18,7 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -189,6 +190,8 @@ class FirebaseSensorRepository(
         val pairedId = database.reference.child("users/${user.uid}/deviceId").get().await()
             .getValue(String::class.java)
         deviceId = pairedId?.takeIf { it.isNotBlank() } ?: defaultDeviceId
+        // Best effort: without a token the app still works, it just gets no pushes.
+        runCatching { setPushToken(user.uid, true) }
         return AccountInfo(
             displayName = profile.child("displayName").getValue(String::class.java) ?: user.displayName ?: "Guest Farmer",
             role = profile.child("role").getValue(String::class.java) ?: "Farmer",
@@ -246,9 +249,18 @@ class FirebaseSensorRepository(
         user.updatePassword(password).await()
     }
 
+    /** Lets the alert function reach this phone: users/{uid}/fcmTokens/{token}. */
+    private suspend fun setPushToken(uid: String, registered: Boolean) {
+        val token = FirebaseMessaging.getInstance().token.await()
+        val reference = database.reference.child("users/$uid/fcmTokens/$token")
+        if (registered) reference.setValue(true).await() else reference.removeValue().await()
+    }
+
     suspend fun signOut() {
         deviceId = defaultDeviceId
         if (configured) {
+            // The next account on this phone must not receive this farm's alerts.
+            auth.currentUser?.let { user -> runCatching { setPushToken(user.uid, false) } }
             auth.signOut()
             try {
                 credentialManager.clearCredentialState(androidx.credentials.ClearCredentialStateRequest())

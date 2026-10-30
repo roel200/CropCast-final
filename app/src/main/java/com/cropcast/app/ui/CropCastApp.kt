@@ -26,6 +26,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
@@ -68,6 +70,7 @@ import com.cropcast.app.data.RainfallStatus
 import com.cropcast.app.data.SeedRecommendationEngine
 import com.cropcast.app.data.SoilSurvey
 import com.cropcast.app.data.WeatherRainfallRepository
+import com.cropcast.app.ui.screens.AlertsDialog
 import com.cropcast.app.ui.screens.MyCropScreen
 import com.cropcast.app.ui.theme.CropGreen
 import com.cropcast.app.ui.theme.CropCastTheme
@@ -187,6 +190,7 @@ fun CropCastApp(viewModel: CropCastViewModel) {
     }
     var selected by remember { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
+    var showAlerts by remember { mutableStateOf(false) }
     CropCastTheme(darkTheme = state.settings.darkModeEnabled) {
     CompositionLocalProvider(LocalCropCastLanguage provides state.settings.language) {
     if (!state.isAuthenticated) {
@@ -212,6 +216,7 @@ fun CropCastApp(viewModel: CropCastViewModel) {
         NavItem(tr("My Crop"), Icons.Default.Eco),
         NavItem(tr("Sensor"), Icons.Default.Sensors)
     )
+    if (showAlerts) AlertsDialog(state.alerts, viewModel::acknowledge) { showAlerts = false }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -220,6 +225,8 @@ fun CropCastApp(viewModel: CropCastViewModel) {
                     isDemo = state.isDemo,
                     darkMode = state.settings.darkModeEnabled,
                     onToggleDarkMode = { viewModel.setDarkMode(!state.settings.darkModeEnabled) },
+                    unreadAlerts = state.alerts.count { !it.acknowledged },
+                    onBellClick = { showAlerts = true },
                     onSettingsClick = { showSettings = true }
                 )
             }
@@ -335,6 +342,8 @@ private fun CropCastHeader(
     isDemo: Boolean,
     darkMode: Boolean,
     onToggleDarkMode: () -> Unit,
+    unreadAlerts: Int,
+    onBellClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     Surface(color = MaterialTheme.colorScheme.background) {
@@ -368,7 +377,9 @@ private fun CropCastHeader(
                 onClick = onToggleDarkMode
             )
             Spacer(Modifier.size(8.dp))
-            HeaderButton(Icons.Default.Notifications, tr("Notifications"), onClick = {})
+            BadgedBox(badge = { if (unreadAlerts > 0) Badge { Text("$unreadAlerts") } }) {
+                HeaderButton(Icons.Default.Notifications, tr("Notifications"), onClick = onBellClick)
+            }
             Spacer(Modifier.size(8.dp))
             HeaderButton(Icons.Default.Settings, tr("Settings"), onClick = onSettingsClick)
         }

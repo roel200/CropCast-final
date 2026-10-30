@@ -217,7 +217,6 @@ class CropCastViewModel(
             )
         }
 
-    private val lastAlertAt = mutableMapOf<String, Long>()
     private val persistedRecommendationSignatures = mutableSetOf<String>()
 
     init {
@@ -240,22 +239,6 @@ class CropCastViewModel(
                     }
             } else {
                 seedState.value = seedState.value.copy(isAuthLoading = false)
-            }
-        }
-        viewModelScope.launch {
-            uiState.collect { state ->
-                if (!state.isAuthenticated || state.isDemo || !state.settings.enabled) return@collect
-                val r = state.reading
-                val s = state.settings
-                if (s.lowMoistureAlertEnabled && r.soilMoisture < s.soilMoistureThreshold) {
-                    sendRepeatedAlert("soil_moisture_low", "Moisture dropped to ${r.soilMoisture.toInt()}%", r.soilMoisture, s.repeatIntervalMinutes)
-                }
-                if (r.temperature > s.highTemperatureThreshold) {
-                    sendRepeatedAlert("temperature_high", "Temperature reached ${"%.1f".format(r.temperature)}°C", r.temperature, s.repeatIntervalMinutes)
-                }
-                if (r.soilPh < s.minSoilPh || r.soilPh > s.maxSoilPh) {
-                    sendRepeatedAlert("soil_ph_out_of_range", "Soil pH is ${"%.1f".format(r.soilPh)}", r.soilPh, s.repeatIntervalMinutes)
-                }
             }
         }
         viewModelScope.launch {
@@ -624,15 +607,6 @@ class CropCastViewModel(
 
     private fun showMessage(message: String) {
         seedState.value = seedState.value.copy(message = message)
-    }
-
-    private suspend fun sendRepeatedAlert(type: String, message: String, value: Double, repeatMinutes: Int) {
-        val now = System.currentTimeMillis()
-        val previous = lastAlertAt[type] ?: 0L
-        if (now - previous >= repeatMinutes * 60_000L) {
-            runCatching { repository.recordAlert(type, message, value) }
-                .onSuccess { lastAlertAt[type] = now }
-        }
     }
 
     fun simulateMoisture(value: Double) {

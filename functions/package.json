@@ -1,0 +1,14 @@
+{
+  "name": "cropcast-functions",
+  "private": true,
+  "description": "Push alerts for CropCast: threshold alerts on each reading and a device-offline check.",
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0"
+  }
+}

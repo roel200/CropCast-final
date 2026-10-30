@@ -16,6 +16,7 @@ An Android app plus ESP32 sensor for Philippine smallholder farmers (field: Mapi
 | `app/src/test/` | JVM unit tests only. No instrumented tests. |
 | `firmware/CropCastESP32/` | Arduino sketch `CropCastESP32.ino`, `portal_logo.h`, README. `secrets.h` is gitignored. |
 | `firebase/database.rules.json` | Realtime Database rules. |
+| `functions/` | Firebase Cloud Functions (Node 22): `onReading` pushes threshold alerts, `checkOffline` pushes device-offline. Pure rules in `alerts.js` (`npm test`). Deploy: `firebase deploy --only functions,database` (Blaze project `cropcast-84fb5`). |
 | `worker/` | Cloudflare Worker (`index.js`, `wrangler.toml`): LLM explanation proxy. Keys are Wrangler secrets. |
 | `scripts/` | Python tools: `seed_demo_history.py`, `simulate_firebase_sensor.py`, `test_ai_providers.py`, data builders. |
 | `data/`, `models/` | Reference datasets and built tables. Not loaded at runtime except the assets copied into `app/src/main/assets/`. |
@@ -99,6 +100,7 @@ Last updated 2026-10-05. "Verified" means I saw it work on the real phone or in 
 
 | Area | Why unverified |
 |---|---|
+| Push alerts (FCM): `functions/`, `push/` in the app, bell list | App builds and JVM/Node tests pass. Functions never deployed; never run on a phone. The app no longer records threshold alerts itself, so no alerts appear until the functions are deployed. Alerts only reach accounts whose `users/<uid>/deviceId` is the device. |
 | My Crop tab (`MyCropScreen`, `MyCropAdvisor`; ported from the My Crop prototype) | Logic and Filipino coverage pass JVM tests (`MyCropAdvisorTest`). Never installed or looked at on a phone. |
 
 Older items:

@@ -304,6 +304,9 @@ private val hiligaynon = mapOf(
     ,"Plan the harvest" to "Plano-a ang ani"
     ,"Harvest is close." to "Malapit na ang ani."
     ,"Line up buyers and sacks this week." to "Ihanda ang mga manugbakal kag sako sa sini nga semana."
+    ,"Farm alerts" to "Mga alerto sa uma"
+    ,"CropCast farm alert" to "Alerto sa uma halin sa CropCast"
+    ,"Mark read" to "Markahi nga nabasa"
 )
 
 val SUPPORTED_LANGUAGES = listOf("Filipino", "English", "Hiligaynon")

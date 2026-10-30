@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: a leaf. Android draws it in one colour, so it must be a plain silhouette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M17,8C8,10 5.9,16.17 3.82,21.34L5.71,22l1,-2.3A4.49,4.49 0,0 0,8 20c11,0 14,-9 14,-18C20.5,4 13,3.5 8,8c-1.5,1.5 -2.2,3.3 -2.5,5C9,9 13,8 17,8z" />
+</vector>

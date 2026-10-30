@@ -26,3 +26,4 @@ worker/.dev.vars
 # generated / third-party, regenerate with the scripts
 data/seed_demo_history.json
 data/raw/bswm/*.pdf
+functions/node_modules/

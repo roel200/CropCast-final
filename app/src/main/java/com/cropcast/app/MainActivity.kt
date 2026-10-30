@@ -1,10 +1,13 @@
 package com.cropcast.app
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import android.content.pm.ApplicationInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
@@ -42,6 +45,9 @@ class MainActivity : ComponentActivity() {
                 .start()
         }
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
             CropCastTheme {
                 val viewModel: CropCastViewModel = viewModel(
